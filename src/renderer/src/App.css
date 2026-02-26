@@ -1,0 +1,786 @@
+/* ===================== CSS VARIABLES ===================== */
+:root {
+  --bg:         #0f1117;
+  --surface:    #1a1d27;
+  --card:       #212436;
+  --card-hover: #272b40;
+  --border:     #2d3148;
+  --border-light: #3a3f5c;
+  --primary:    #7c6af7;
+  --primary-h:  #9d8fff;
+  --primary-d:  #5a4dd6;
+  --pink:       #f472b6;
+  --success:    #34d399;
+  --danger:     #f87171;
+  --warning:    #fbbf24;
+  --text:       #e2e8f0;
+  --text-sec:   #94a3b8;
+  --muted:      #64748b;
+  --radius:     10px;
+  --radius-sm:  6px;
+  --transition: 0.18s ease;
+}
+
+/* ===================== RESET & BASE ===================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* ===================== SCROLLBAR ===================== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ===================== APP LAYOUT ===================== */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ===================== TITLEBAR ===================== */
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.titlebar-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.titlebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sec);
+  letter-spacing: 0.02em;
+}
+
+.titlebar-controls {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+  width: 32px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  transition: background var(--transition), color var(--transition);
+}
+
+.titlebar-btn:hover { background: var(--card); color: var(--text); }
+.titlebar-btn.close:hover { background: var(--danger); color: white; }
+
+/* ===================== MAIN CONTENT ===================== */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+  gap: 14px;
+}
+
+/* ===================== TOP PANEL (Cover + Audio) ===================== */
+.top-panel {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ===================== COVER PICKER ===================== */
+.cover-panel {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cover-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cover-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+}
+
+.panel-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cover-drop-zone {
+  flex: 1;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+  position: relative;
+  overflow: hidden;
+  min-height: 180px;
+  background: var(--card);
+}
+
+.cover-drop-zone:hover,
+.cover-drop-zone.drag-over {
+  border-color: var(--primary);
+  background: rgba(124, 106, 247, 0.06);
+}
+
+.cover-drop-zone img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.cover-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  z-index: 1;
+}
+
+.cover-placeholder-icon {
+  font-size: 36px;
+  opacity: 0.5;
+}
+
+.cover-placeholder-text {
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.cover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--transition);
+  border-radius: calc(var(--radius) - 2px);
+  z-index: 2;
+}
+
+.cover-drop-zone:hover .cover-overlay { opacity: 1; }
+
+.cover-overlay-text {
+  font-size: 12px;
+  color: white;
+  font-weight: 500;
+}
+
+.cover-name {
+  font-size: 11px;
+  color: var(--text-sec);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* ===================== AUDIO LIST ===================== */
+.audio-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.audio-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.audio-list-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  min-height: 0;
+}
+
+.audio-list-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+  padding: 32px;
+  text-align: center;
+}
+
+.audio-list-empty-icon { font-size: 40px; opacity: 0.3; }
+.audio-list-empty-text { font-size: 13px; line-height: 1.5; }
+
+.audio-list {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.audio-list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 0;
+}
+
+.audio-stats {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.btn-clear {
+  font-size: 11px;
+  color: var(--danger);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.btn-clear:hover { background: rgba(248,113,113,0.1); }
+
+/* ===================== AUDIO ITEM ===================== */
+.audio-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition: background var(--transition);
+  cursor: default;
+  border: 1px solid transparent;
+}
+
+.audio-item:hover { background: var(--card-hover); border-color: var(--border); }
+.audio-item.is-dragging {
+  background: rgba(124, 106, 247, 0.12);
+  border-color: var(--primary);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  opacity: 0.95;
+}
+
+.audio-drag-handle {
+  color: var(--muted);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+.audio-drag-handle:hover { color: var(--text-sec); }
+.audio-drag-handle:active { cursor: grabbing; }
+
+.audio-index {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.audio-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.audio-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.audio-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.audio-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.audio-duration {
+  font-size: 11px;
+  color: var(--text-sec);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.audio-remove-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+  opacity: 0;
+}
+
+.audio-item:hover .audio-remove-btn { opacity: 1; }
+.audio-remove-btn:hover { background: rgba(248,113,113,0.15); color: var(--danger); }
+
+/* ===================== SETTINGS PANEL ===================== */
+.settings-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  flex-shrink: 0;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 12px;
+  color: var(--text-sec);
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.settings-full {
+  grid-column: 1 / -1;
+}
+
+/* Radio buttons */
+.radio-group {
+  display: flex;
+  gap: 6px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-sec);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card);
+  transition: all var(--transition);
+}
+
+.radio-option input[type="radio"] { display: none; }
+
+.radio-option.active {
+  border-color: var(--primary);
+  color: var(--primary-h);
+  background: rgba(124, 106, 247, 0.1);
+}
+
+.radio-option:hover:not(.active) {
+  border-color: var(--border-light);
+  background: var(--card-hover);
+}
+
+/* Toggle */
+.toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.toggle {
+  width: 36px;
+  height: 20px;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+
+.toggle.on { background: var(--primary); }
+
+.toggle::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform var(--transition);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+.toggle.on::after { transform: translateX(16px); }
+
+.toggle-label {
+  font-size: 13px;
+  color: var(--text-sec);
+}
+
+/* Output path */
+.output-path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.output-path-input {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: text;
+}
+
+.output-path-input:hover { border-color: var(--border-light); }
+.output-path-input:focus { border-color: var(--primary); }
+
+/* Editable text variant of the output input */
+.output-name-input {
+  cursor: text;
+  user-select: text;
+}
+.output-name-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ".mp4" suffix badge */
+.output-ext-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ===================== BOTTOM BAR ===================== */
+.bottom-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* ===================== PROGRESS BAR ===================== */
+.progress-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.progress-track {
+  height: 6px;
+  background: var(--card);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--pink));
+  transition: width 0.4s ease;
+  position: relative;
+}
+
+.progress-fill.indeterminate {
+  width: 40% !important;
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-stage {
+  font-size: 11px;
+  color: var(--text-sec);
+}
+
+.progress-percent {
+  font-size: 11px;
+  color: var(--primary-h);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===================== BUTTONS ===================== */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  padding: 10px 22px;
+  font-size: 14px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-h);
+  box-shadow: 0 0 20px rgba(124, 106, 247, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background: var(--card);
+  color: var(--text-sec);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--card-hover);
+  border-color: var(--border-light);
+  color: var(--text);
+}
+
+.btn-danger {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--card-hover);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ===================== TOAST ===================== */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  pointer-events: all;
+  min-width: 260px;
+  max-width: 380px;
+  animation: slideIn 0.25s ease;
+  backdrop-filter: blur(10px);
+}
+
+.toast.exiting { animation: slideOut 0.25s ease forwards; }
+
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(20px); opacity: 0; }
+}
+
+.toast-icon { font-size: 18px; flex-shrink: 0; }
+.toast-message { font-size: 13px; flex: 1; line-height: 1.4; }
+.toast-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 16px;
+  padding: 0;
+  flex-shrink: 0;
+  pointer-events: all;
+  transition: color var(--transition);
+}
+.toast-close:hover { color: var(--text); }
+
+.toast.success { border-color: rgba(52, 211, 153, 0.3); }
+.toast.success .toast-icon { color: var(--success); }
+.toast.error { border-color: rgba(248, 113, 113, 0.3); }
+.toast.error .toast-icon { color: var(--danger); }
+.toast.info { border-color: rgba(124, 106, 247, 0.3); }
+.toast.info .toast-icon { color: var(--primary); }
+.toast.warning { border-color: rgba(251, 191, 36, 0.3); }
+.toast.warning .toast-icon { color: var(--warning); }
+
+/* ===================== DIVIDER ===================== */
+.divider {
+  width: 1px;
+  background: var(--border);
+  align-self: stretch;
+  flex-shrink: 0;
+}
+
+/* ===================== UTILS ===================== */
+.success-banner {
+  background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--success);
+  flex: 1;
+}
+
+.success-banner-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-sec);
+}

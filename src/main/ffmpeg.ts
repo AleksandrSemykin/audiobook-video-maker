@@ -55,6 +55,16 @@ function formatTime(seconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+// Format wall-clock seconds → human-friendly string, e.g. "1 мин 45 с"
+function formatWallTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h} ч ${String(m).padStart(2, '0')} мин`
+  if (m > 0) return `${m} мин ${String(s).padStart(2, '0')} с`
+  return `${s} с`
+}
+
 // Parse HH:MM:SS.ms → seconds
 function parseTimemark(timemark: string | undefined): number {
   if (!timemark || typeof timemark !== 'string') return 0
@@ -110,55 +120,63 @@ function detectEncoder(): Promise<HWEncoder> {
 
 /**
  * Build the -c:v … output options for the detected encoder.
- * All paths also set a large GOP (-g 500) because the source is a
- * static image — inter-frame coding is essentially free after the
- * first keyframe, making a large GOP safe and beneficial.
+ * GOP is set to 30 which equals 30 s of keyframe interval at 1 fps —
+ * safe for seek precision on a static-image audiobook video.
  */
 function buildVideoOutputOptions(encoder: HWEncoder, crf: number, cpuPreset: string): string[] {
-  const gop = ['-g', '500']
+  // At 1 fps, a GOP of 30 means one keyframe every 30 seconds — good seek granularity.
+  const gop = ['-g', '30']
 
   switch (encoder) {
     case 'h264_nvenc':
-      // NVENC: VBR constant-quality mode; p4 = balanced speed/quality
+      // p1 = fastest NVENC preset. Quality difference vs p4 is invisible on a
+      // static image. -surfaces 64 keeps the encoder's internal queue full so
+      // the GPU never stalls waiting for the next frame.
       return [
         '-c:v', 'h264_nvenc',
-        '-preset', 'p4',
+        '-preset', 'p1',
         '-rc', 'vbr',
         '-cq', String(crf),
         '-b:v', '0',
+        '-surfaces', '64',
         ...gop
       ]
 
     case 'h264_qsv':
-      // Intel Quick Sync: global_quality ≈ CRF, look_ahead for better quality
+      // async_depth 4: QSV will buffer up to 4 frames internally, keeping
+      // the GPU pipeline full even when CPU filter output is slightly uneven.
       return [
         '-c:v', 'h264_qsv',
-        '-preset', 'medium',
+        '-preset', 'faster',
         '-global_quality', String(crf),
-        '-look_ahead', '1',
+        '-look_ahead', '0',
+        '-async_depth', '4',
         ...gop
       ]
 
     case 'h264_amf':
-      // AMD AMF: constant-QP mode
+      // preanalysis 0: disables CPU-side pre-analysis so AMF encodes
+      // immediately without waiting for lookahead frames.
       return [
         '-c:v', 'h264_amf',
-        '-quality', 'balanced',
+        '-quality', 'speed',
         '-rc', 'cqp',
         '-qp_i', String(crf),
         '-qp_p', String(crf),
+        '-preanalysis', '0',
         ...gop
       ]
 
     default:
-      // libx264: tune stillimage disables motion-estimation overhead;
-      // fast preset + large GOP ≈ 3–5× speedup vs slow for static content.
+      // libx264 CPU path: tune stillimage + fast preset + large GOP.
+      // GOP stays large (500) on CPU because there is no GPU pipeline
+      // to keep filled — fewer keyframes simply means less work.
       return [
         '-c:v', 'libx264',
         '-preset', cpuPreset,
         '-crf', String(crf),
         '-tune', 'stillimage',
-        ...gop
+        '-g', '500'
       ]
   }
 }
@@ -275,8 +293,12 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   return new Promise((resolve, reject) => {
     const cmd = Ffmpeg()
 
-    // Input 0: cover image (loop)
-    cmd.input(coverImage).inputOptions(['-loop', '1'])
+    // Input 0: cover image — looped at 1 fps.
+    // 1 fps means the entire filter_complex + encoder pipeline processes
+    // ~25× fewer frames than the default 25 fps, directly capping GPU at
+    // the rate it actually needs to work rather than starving it with idle
+    // waits between identical frames.
+    cmd.input(coverImage).inputOptions(['-loop', '1', '-r', '1'])
 
     // Inputs 1..N: audio files
     for (const file of audioFiles) {
@@ -292,7 +314,10 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         '-c:a', 'aac',
         '-b:a', '192k',
         '-movflags', '+faststart',
-        '-shortest'
+        '-shortest',
+        // Use all available CPU cores for the filter pipeline so it feeds
+        // the GPU encoder as fast as possible.
+        '-threads', '0'
       ])
       .output(outputPath)
       .on('start', (cmdLine: string) => {
@@ -335,7 +360,8 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         // Do NOT call sendProgress here — ffmpeg:complete is sent on a different
         // IPC channel and could be reordered with a late ffmpeg:progress event,
         // leaving isProcessing stuck as true in the renderer.
-        win.webContents.send('ffmpeg:complete', { outputPath })
+        const totalTime = formatWallTime((Date.now() - startWallMs) / 1000)
+        win.webContents.send('ffmpeg:complete', { outputPath, totalTime })
         resolve(outputPath)
       })
       .on('error', (err: Error) => {

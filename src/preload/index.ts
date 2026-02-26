@@ -28,8 +28,8 @@ const api: ElectronAPI = {
     ipcRenderer.on('ffmpeg:progress', handler)
     return () => ipcRenderer.removeListener('ffmpeg:progress', handler)
   },
-  onComplete: (callback: (data: { outputPath: string }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { outputPath: string }) => callback(data)
+  onComplete: (callback: (data: { outputPath: string; totalTime: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { outputPath: string; totalTime: string }) => callback(data)
     ipcRenderer.on('ffmpeg:complete', handler)
     return () => ipcRenderer.removeListener('ffmpeg:complete', handler)
   },

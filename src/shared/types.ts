@@ -68,7 +68,7 @@ export interface ElectronAPI {
 
   // Events from main process (return unsubscribe functions)
   onProgress: (callback: (data: ProgressData) => void) => () => void
-  onComplete: (callback: (data: { outputPath: string }) => void) => () => void
+  onComplete: (callback: (data: { outputPath: string; totalTime: string }) => void) => () => void
   onCancelled: (callback: () => void) => () => void
   onError: (callback: (data: { message: string }) => void) => () => void
 }

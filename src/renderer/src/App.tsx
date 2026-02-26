@@ -44,6 +44,9 @@ export default function App(): React.ReactElement {
   // Ref so stable addAudioPaths callback can read current videoName
   const videoNameRef = useRef(videoName)
   videoNameRef.current = videoName
+  // Gate for stale ffmpeg:progress events that arrive after ffmpeg:complete/cancelled/error.
+  // Set to true as soon as the conversion is finished; reset on next start.
+  const isDoneRef = useRef(false)
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [progress, setProgress] = useState<ProgressData & { isProcessing: boolean }>({
     percent: 0,
@@ -51,29 +54,35 @@ export default function App(): React.ReactElement {
     isProcessing: false
   })
   const [lastOutput, setLastOutput] = useState<string | null>(null)
+  const [lastTotalTime, setLastTotalTime] = useState<string | null>(null)
 
   const { toasts, addToast, removeToast } = useToast()
 
   // Listen to FFmpeg events
   useEffect(() => {
     const unsubProgress = window.electronAPI.onProgress((data) => {
+      if (isDoneRef.current) return
       setProgress({ ...data, isProcessing: true })
     })
 
-    const unsubComplete = window.electronAPI.onComplete(({ outputPath: out }) => {
+    const unsubComplete = window.electronAPI.onComplete(({ outputPath: out, totalTime }) => {
+      isDoneRef.current = true
       setIsProcessing(false)
       setLastOutput(out)
+      setLastTotalTime(totalTime)
       setProgress({ percent: 100, stage: 'Готово! 🎉', isProcessing: false })
       addToast(`Видео сохранено: ${out.split(/[/\\]/).pop()}`, 'success', 6000)
     })
 
     const unsubCancelled = window.electronAPI.onCancelled(() => {
+      isDoneRef.current = true
       setIsProcessing(false)
       setProgress({ percent: 0, stage: '', isProcessing: false })
       addToast('Создание видео отменено', 'warning')
     })
 
     const unsubError = window.electronAPI.onError(({ message }) => {
+      isDoneRef.current = true
       setIsProcessing(false)
       setProgress({ percent: 0, stage: '', isProcessing: false })
       addToast(`Ошибка FFmpeg: ${message}`, 'error', 8000)
@@ -138,6 +147,8 @@ export default function App(): React.ReactElement {
 
     setIsProcessing(true)
     setLastOutput(null)
+    setLastTotalTime(null)
+    isDoneRef.current = false
     setProgress({ percent: 0, stage: 'Инициализация...', isProcessing: true })
 
     window.electronAPI.startProcessing({
@@ -222,6 +233,9 @@ export default function App(): React.ReactElement {
               <span className="success-banner-path" title={lastOutput}>
                 {lastOutput}
               </span>
+              {lastTotalTime && (
+                <span className="success-banner-time">⏱ {lastTotalTime}</span>
+              )}
               <button
                 className="btn btn-secondary"
                 onClick={handleOpenFolder}

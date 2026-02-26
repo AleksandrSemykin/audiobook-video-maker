@@ -814,3 +814,10 @@ html, body, #root {
   font-size: 12px;
   color: var(--text-sec);
 }
+
+.success-banner-time {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}

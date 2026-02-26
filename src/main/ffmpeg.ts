@@ -1,14 +1,24 @@
-import { app } from 'electron'
+import { app, BrowserWindow, IpcMain } from 'electron'
 import { createRequire } from 'module'
+import type { FfprobeData } from 'fluent-ffmpeg'
+import type { ProcessConfig } from '../shared/types'
 
 // Use createRequire for CJS packages in ESM context
 const require = createRequire(import.meta.url)
-const ffmpegStatic = require('ffmpeg-static')
-const ffprobeStatic = require('ffprobe-static')
-const Ffmpeg = require('fluent-ffmpeg')
+const ffmpegStatic: string = require('ffmpeg-static')
+const ffprobeStatic: { path: string } = require('ffprobe-static')
+const Ffmpeg: typeof import('fluent-ffmpeg') = require('fluent-ffmpeg')
+
+// Quality preset definition
+interface QualityPreset {
+  width: number
+  height: number
+  crf: number
+  preset: string
+}
 
 // Resolve binary paths (handle asar unpacking)
-function resolveBin(binPath) {
+function resolveBin(binPath: string): string {
   if (app.isPackaged) {
     return binPath.replace('app.asar', 'app.asar.unpacked')
   }
@@ -21,23 +31,23 @@ const ffprobePath = resolveBin(ffprobeStatic.path)
 Ffmpeg.setFfmpegPath(ffmpegPath)
 Ffmpeg.setFfprobePath(ffprobePath)
 
-let currentCommand = null
+let currentCommand: ReturnType<typeof Ffmpeg> | null = null
 
 // Get audio duration and file size via ffprobe
-export function getAudioDuration(filePath) {
+export function getAudioDuration(filePath: string): Promise<{ duration: number; size: number }> {
   return new Promise((resolve, reject) => {
-    Ffmpeg.ffprobe(filePath, (err, metadata) => {
+    Ffmpeg.ffprobe(filePath, (err: Error | null, metadata: FfprobeData) => {
       if (err) return reject(err)
       resolve({
-        duration: metadata.format.duration || 0,
-        size: metadata.format.size || 0
+        duration: metadata.format.duration ?? 0,
+        size: metadata.format.size ?? 0
       })
     })
   })
 }
 
 // Format seconds → HH:MM:SS
-function formatTime(seconds) {
+function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
@@ -45,7 +55,7 @@ function formatTime(seconds) {
 }
 
 // Parse HH:MM:SS.ms → seconds
-function parseTimemark(timemark) {
+function parseTimemark(timemark: string | undefined): number {
   if (!timemark || typeof timemark !== 'string') return 0
   const parts = timemark.split(':')
   if (parts.length !== 3) return 0
@@ -53,14 +63,14 @@ function parseTimemark(timemark) {
 }
 
 // Quality presets
-const QUALITY_PRESETS = {
+const QUALITY_PRESETS: Record<string, QualityPreset> = {
   '1080p': { width: 1920, height: 1080, crf: 18, preset: 'slow' },
   '720p':  { width: 1280, height: 720,  crf: 22, preset: 'medium' },
   '480p':  { width: 854,  height: 480,  crf: 26, preset: 'fast' }
 }
 
 // Escape text for ffmpeg drawtext filter
-function escapeDrawtext(text) {
+function escapeDrawtext(text: string): string {
   return text
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
@@ -68,7 +78,7 @@ function escapeDrawtext(text) {
 }
 
 // Clean chapter name (remove leading number + extension)
-function cleanChapterName(name) {
+function cleanChapterName(name: string): string {
   return name
     .replace(/^\d+[.\s_\-]+/, '')
     .replace(/\.(mp3|wav|flac|m4a|ogg|aac)$/i, '')
@@ -76,13 +86,13 @@ function cleanChapterName(name) {
 }
 
 // Main processing function
-export async function processAudiobook(config, win) {
+export async function processAudiobook(config: ProcessConfig, win: BrowserWindow): Promise<string> {
   const { audioFiles, coverImage, outputPath, quality, showChapterTitles } = config
-  const preset = QUALITY_PRESETS[quality] || QUALITY_PRESETS['1080p']
+  const preset = QUALITY_PRESETS[quality] ?? QUALITY_PRESETS['1080p']
   const { width, height, crf, preset: encPreset } = preset
 
   // 1. Get durations for all audio files
-  const sendProgress = (percent, stage, extra = {}) => {
+  const sendProgress = (percent: number, stage: string, extra: Record<string, unknown> = {}): void => {
     win.webContents.send('ffmpeg:progress', {
       percent,
       stage,
@@ -93,7 +103,7 @@ export async function processAudiobook(config, win) {
 
   sendProgress(0, 'Анализ аудиофайлов...')
 
-  const durations = []
+  const durations: number[] = []
   for (let i = 0; i < audioFiles.length; i++) {
     const { duration: dur } = await getAudioDuration(audioFiles[i].path)
     durations.push(dur)
@@ -119,11 +129,11 @@ export async function processAudiobook(config, win) {
     `format=yuv420p[vbase]`
 
   let videoMap = '[vbase]'
-  let filterParts = [videoScale, audioConcat]
+  const filterParts: string[] = [videoScale, audioConcat]
 
   if (showChapterTitles && numAudio > 0) {
     // Calculate chapter start timestamps
-    const timestamps = []
+    const timestamps: number[] = []
     let t = 0
     for (const dur of durations) {
       timestamps.push(t)
@@ -185,14 +195,14 @@ export async function processAudiobook(config, win) {
         '-shortest'
       ])
       .output(outputPath)
-      .on('start', (cmdLine) => {
+      .on('start', (cmdLine: string) => {
         console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')
       })
-      .on('progress', (prog) => {
+      .on('progress', (prog: { timemark?: string; percent?: number }) => {
         const elapsed = parseTimemark(prog.timemark)
         const percent = totalDuration > 0
           ? Math.min(99, Math.round(5 + (elapsed / totalDuration) * 94))
-          : (prog.percent || 0)
+          : (prog.percent ?? 0)
 
         // Find current chapter by elapsed time
         let currentChapter = 1
@@ -215,7 +225,7 @@ export async function processAudiobook(config, win) {
         win.webContents.send('ffmpeg:complete', { outputPath })
         resolve(outputPath)
       })
-      .on('error', (err) => {
+      .on('error', (err: Error) => {
         currentCommand = null
         const msg = err.message || String(err)
         if (msg.includes('SIGKILL') || msg.includes('SIGTERM') || msg.includes('ffmpeg was killed')) {
@@ -232,7 +242,7 @@ export async function processAudiobook(config, win) {
   })
 }
 
-export function cancelProcessing() {
+export function cancelProcessing(): void {
   if (currentCommand) {
     try { currentCommand.kill('SIGKILL') } catch (e) { /* ignore */ }
     currentCommand = null
@@ -240,15 +250,15 @@ export function cancelProcessing() {
 }
 
 // Register all IPC handlers
-export function setupFfmpegHandlers(ipcMain, win) {
-  ipcMain.handle('ffmpeg:getDuration', async (_, filePath) => {
+export function setupFfmpegHandlers(ipcMain: IpcMain, win: BrowserWindow): void {
+  ipcMain.handle('ffmpeg:getDuration', async (_event, filePath: string) => {
     try { return await getAudioDuration(filePath) }
-    catch (e) { console.error('getDuration error:', e.message); return { duration: 0, size: 0 } }
+    catch (e) { console.error('getDuration error:', (e as Error).message); return { duration: 0, size: 0 } }
   })
 
-  ipcMain.on('ffmpeg:process', async (_, config) => {
+  ipcMain.on('ffmpeg:process', async (_event, config: ProcessConfig) => {
     try { await processAudiobook(config, win) }
-    catch (e) { console.error('Process error:', e.message) }
+    catch (e) { console.error('Process error:', (e as Error).message) }
   })
 
   ipcMain.on('ffmpeg:cancel', () => cancelProcessing())

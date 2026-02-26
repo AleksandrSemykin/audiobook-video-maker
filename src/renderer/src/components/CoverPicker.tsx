@@ -1,21 +1,28 @@
 import React, { useState } from 'react'
 
-export function CoverPicker({ coverPath, onSelect, onClear, disabled }) {
+interface CoverPickerProps {
+  coverPath: string | null
+  onSelect: (path: string) => void
+  onClear: () => void
+  disabled?: boolean
+}
+
+export function CoverPicker({ coverPath, onSelect, onClear, disabled }: CoverPickerProps): React.ReactElement {
   const [dragOver, setDragOver] = useState(false)
 
-  const handleClick = async () => {
+  const handleClick = async (): Promise<void> => {
     const path = await window.electronAPI.openImageFile()
     if (path) onSelect(path)
   }
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
     setDragOver(true)
   }
 
-  const handleDragLeave = () => setDragOver(false)
+  const handleDragLeave = (): void => setDragOver(false)
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
     setDragOver(false)
     const files = Array.from(e.dataTransfer.files)
@@ -53,7 +60,7 @@ export function CoverPicker({ coverPath, onSelect, onClear, disabled }) {
         {coverPath ? (
           <>
             <img
-              src={imgSrc}
+              src={imgSrc ?? undefined}
               alt="Cover"
               draggable={false}
             />

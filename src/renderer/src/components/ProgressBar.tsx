@@ -1,6 +1,14 @@
 import React from 'react'
+import type { ProgressData } from '../../../shared/types'
 
-export function ProgressBar({ progress, onCancel, onOpenFolder, outputPath }) {
+interface ProgressBarProps {
+  progress: ProgressData & { isProcessing?: boolean }
+  onCancel: () => void
+  onOpenFolder: () => void
+  outputPath: string | null
+}
+
+export function ProgressBar({ progress }: ProgressBarProps): React.ReactElement {
   const { percent = 0, stage = '', elapsed, total, isProcessing } = progress
 
   return (

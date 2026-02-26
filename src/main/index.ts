@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
 import { join } from 'path'
-import { setupFfmpegHandlers } from './ffmpeg.js'
+import { setupFfmpegHandlers } from './ffmpeg'
 
 // Must be called before app.whenReady() — registers custom scheme as privileged
 // so it can bypass CSP and be treated as secure (same as https://)
@@ -11,7 +11,7 @@ protocol.registerSchemesAsPrivileged([
   }
 ])
 
-function createWindow() {
+function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
@@ -77,7 +77,7 @@ app.whenReady().then(() => {
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle('dialog:saveOutputFile', async (_, defaultName) => {
+  ipcMain.handle('dialog:saveOutputFile', async (_event, defaultName?: string) => {
     const result = await dialog.showSaveDialog(win, {
       title: 'Сохранить видео как...',
       defaultPath: defaultName || 'audiobook.mp4',
@@ -94,7 +94,7 @@ app.whenReady().then(() => {
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.on('dialog:openFolder', (_, folderPath) => {
+  ipcMain.on('dialog:openFolder', (_event, folderPath: string) => {
     shell.openPath(folderPath)
   })
 

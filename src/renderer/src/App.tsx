@@ -1,20 +1,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { CoverPicker } from './components/CoverPicker.jsx'
-import { AudioList } from './components/AudioList.jsx'
-import { Settings } from './components/Settings.jsx'
-import { ProgressBar } from './components/ProgressBar.jsx'
-import { ToastContainer, useToast } from './components/Toast.jsx'
+import { CoverPicker } from './components/CoverPicker'
+import { AudioList } from './components/AudioList'
+import { Settings } from './components/Settings'
+import { ProgressBar } from './components/ProgressBar'
+import { ToastContainer, useToast } from './components/Toast'
+import type { AudioFile, AppSettings, ProgressData } from '../../shared/types'
 
 // Auto-detect order number from filename
-function getFileOrder(name) {
+function getFileOrder(name: string): number {
   const m = name.match(/^(\d+)[.\s_\-]?/)
   return m ? parseInt(m[1], 10) : 999
 }
 
 let fileIdCounter = 0
 
-function createFileEntry(path) {
-  const name = path.split(/[/\\]/).pop()
+function createFileEntry(path: string): AudioFile {
+  const name = path.split(/[/\\]/).pop() ?? path
   const base = name.replace(/\.(mp3|wav|flac|m4a|ogg|aac)$/i, '')
   return {
     id: String(++fileIdCounter),
@@ -26,16 +27,16 @@ function createFileEntry(path) {
   }
 }
 
-export default function App() {
-  const [coverPath, setCoverPath] = useState(null)
-  const [audioFiles, setAudioFiles] = useState([])
-  const [settings, setSettings] = useState({
+export default function App(): React.ReactElement {
+  const [coverPath, setCoverPath] = useState<string | null>(null)
+  const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
+  const [settings, setSettings] = useState<AppSettings>({
     quality: '1080p',
     transitions: 'none',
     showChapterTitles: false
   })
-  const [videoName, setVideoName] = useState('')
-  const [outputFolder, setOutputFolder] = useState('')
+  const [videoName, setVideoName] = useState<string>('')
+  const [outputFolder, setOutputFolder] = useState<string>('')
   // Computed full output path — derived from folder + name
   const outputPath = outputFolder && videoName.trim()
     ? `${outputFolder}\\${videoName.trim()}.mp4`
@@ -43,9 +44,13 @@ export default function App() {
   // Ref so stable addAudioPaths callback can read current videoName
   const videoNameRef = useRef(videoName)
   videoNameRef.current = videoName
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [progress, setProgress] = useState({ percent: 0, stage: '', isProcessing: false })
-  const [lastOutput, setLastOutput] = useState(null)
+  const [isProcessing, setIsProcessing] = useState<boolean>(false)
+  const [progress, setProgress] = useState<ProgressData & { isProcessing: boolean }>({
+    percent: 0,
+    stage: '',
+    isProcessing: false
+  })
+  const [lastOutput, setLastOutput] = useState<string | null>(null)
 
   const { toasts, addToast, removeToast } = useToast()
 
@@ -84,7 +89,7 @@ export default function App() {
   }, [])
 
   // Add audio files (shared logic for both dialog and OS drop)
-  const addAudioPaths = useCallback((paths) => {
+  const addAudioPaths = useCallback((paths: string[]) => {
     if (!paths?.length) return
     const newEntries = paths.map(createFileEntry)
     setAudioFiles(prev => {
@@ -111,13 +116,13 @@ export default function App() {
   }, [addAudioPaths])
 
   // Select output folder
-  const handleSelectFolder = async () => {
+  const handleSelectFolder = async (): Promise<void> => {
     const folder = await window.electronAPI.selectFolder()
     if (folder) setOutputFolder(folder)
   }
 
   // Start processing
-  const handleStart = () => {
+  const handleStart = (): void => {
     if (!coverPath) {
       addToast('Выберите обложку для видео', 'warning')
       return
@@ -129,7 +134,6 @@ export default function App() {
     if (!outputPath) {
       addToast('Укажите путь для сохранения видео', 'warning')
       return
-      // Auto-select output if not set
     }
 
     setIsProcessing(true)
@@ -146,11 +150,11 @@ export default function App() {
     })
   }
 
-  const handleCancel = () => {
+  const handleCancel = (): void => {
     window.electronAPI.cancelProcessing()
   }
 
-  const handleOpenFolder = () => {
+  const handleOpenFolder = (): void => {
     if (lastOutput) {
       const folder = lastOutput.split(/[/\\]/).slice(0, -1).join('\\') || lastOutput
       window.electronAPI.openFolder(folder)

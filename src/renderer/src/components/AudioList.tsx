@@ -5,7 +5,8 @@ import {
   KeyboardSensor,
   PointerSensor,
   useSensor,
-  useSensors
+  useSensors,
+  type DragEndEvent
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -13,12 +14,21 @@ import {
   verticalListSortingStrategy,
   arrayMove
 } from '@dnd-kit/sortable'
-import { AudioItem } from './AudioItem.jsx'
+import { AudioItem } from './AudioItem'
+import type { AudioFile } from '../../../shared/types'
+
+interface AudioListProps {
+  files: AudioFile[]
+  onFilesChange: (files: AudioFile[]) => void
+  onAdd: () => void
+  onDropFiles: (paths: string[]) => void
+  disabled?: boolean
+}
 
 const AUDIO_EXTS = /\.(mp3|wav|flac|m4a|ogg|aac)$/i
 
-function formatTotalDuration(files) {
-  const total = files.reduce((acc, f) => acc + (f.duration || 0), 0)
+function formatTotalDuration(files: AudioFile[]): string | null {
+  const total = files.reduce((acc, f) => acc + (f.duration ?? 0), 0)
   if (total === 0) return null
   const h = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)
@@ -28,7 +38,7 @@ function formatTotalDuration(files) {
   return `${s} сек`
 }
 
-export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }) {
+export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }: AudioListProps): React.ReactElement {
   const [osDragOver, setOsDragOver] = useState(false)
 
   const sensors = useSensors(
@@ -36,7 +46,7 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
     if (over && active.id !== over.id) {
       const oldIndex = files.findIndex(f => f.id === active.id)
@@ -45,22 +55,22 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
     }
   }
 
-  const handleRemove = (id) => {
+  const handleRemove = (id: string): void => {
     onFilesChange(files.filter(f => f.id !== id))
   }
 
   // Handle OS file drag-and-drop
-  const handleOsDragOver = useCallback((e) => {
+  const handleOsDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     if (e.dataTransfer.types.includes('Files')) setOsDragOver(true)
   }, [])
 
-  const handleOsDragLeave = useCallback((e) => {
-    if (!e.currentTarget.contains(e.relatedTarget)) setOsDragOver(false)
+  const handleOsDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setOsDragOver(false)
   }, [])
 
-  const handleOsDrop = useCallback((e) => {
+  const handleOsDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     setOsDragOver(false)
@@ -71,7 +81,7 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
   }, [onDropFiles])
 
   const duration = formatTotalDuration(files)
-  const plural = (n) => n === 1 ? 'файл' : n < 5 ? 'файла' : 'файлов'
+  const plural = (n: number): string => n === 1 ? 'файл' : n < 5 ? 'файла' : 'файлов'
 
   return (
     <div className="audio-panel">

@@ -1,12 +1,35 @@
 import React from 'react'
+import type { AppSettings, Quality, Transition } from '../../../shared/types'
 
-const QUALITY_OPTIONS = [
+interface QualityOption {
+  value: Quality
+  label: string
+  hint: string
+}
+
+interface TransitionOption {
+  value: Transition
+  label: string
+}
+
+interface SettingsProps {
+  settings: AppSettings
+  onChange: (settings: AppSettings) => void
+  videoName: string
+  onVideoNameChange: (name: string) => void
+  outputFolder: string
+  onSelectFolder: () => void
+  outputPath: string
+  disabled?: boolean
+}
+
+const QUALITY_OPTIONS: QualityOption[] = [
   { value: '1080p', label: '1080p', hint: 'YouTube HD' },
   { value: '720p',  label: '720p',  hint: 'Компактный' },
   { value: '480p',  label: '480p',  hint: 'Лёгкий' }
 ]
 
-const TRANSITION_OPTIONS = [
+const TRANSITION_OPTIONS: TransitionOption[] = [
   { value: 'none', label: 'Без переходов' },
   { value: 'fade', label: 'Fade' }
 ]
@@ -17,8 +40,9 @@ export function Settings({
   outputFolder, onSelectFolder,
   outputPath,
   disabled
-}) {
-  const set = (key, value) => onChange({ ...settings, [key]: value })
+}: SettingsProps): React.ReactElement {
+  const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]): void =>
+    onChange({ ...settings, [key]: value })
 
   return (
     <div className="settings-panel">

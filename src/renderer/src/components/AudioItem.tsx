@@ -1,8 +1,15 @@
 import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import type { AudioFile } from '../../../shared/types'
 
-function formatDuration(seconds) {
+interface AudioItemProps {
+  file: AudioFile
+  index: number
+  onRemove: (id: string) => void
+}
+
+function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || isNaN(seconds)) return '--:--'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -11,7 +18,7 @@ function formatDuration(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export function AudioItem({ file, index, onRemove }) {
+export function AudioItem({ file, index, onRemove }: AudioItemProps): React.ReactElement {
   const {
     attributes,
     listeners,
@@ -21,7 +28,7 @@ export function AudioItem({ file, index, onRemove }) {
     isDragging
   } = useSortable({ id: file.id })
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 10 : undefined

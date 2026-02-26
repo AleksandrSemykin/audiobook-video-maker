@@ -8,8 +8,19 @@ interface ProgressBarProps {
   outputPath: string | null
 }
 
+const ENCODER_ICONS: Record<string, string> = {
+  'h264_nvenc': '⚡',
+  'h264_qsv':  '⚡',
+  'h264_amf':  '⚡',
+  'libx264':   '🖥',
+}
+
 export function ProgressBar({ progress }: ProgressBarProps): React.ReactElement {
-  const { percent = 0, stage = '', elapsed, total, isProcessing } = progress
+  const { percent = 0, stage = '', elapsed, total, eta, isProcessing, encoderLabel, encoderId } = progress
+
+  const showEncoder = isProcessing && !!encoderLabel
+  const isGpu = encoderId ? encoderId !== 'libx264' : false
+  const icon = encoderId ? (ENCODER_ICONS[encoderId] ?? '🖥') : ''
 
   return (
     <div className="progress-container">
@@ -23,7 +34,13 @@ export function ProgressBar({ progress }: ProgressBarProps): React.ReactElement 
         <span className="progress-stage">
           {stage}
           {elapsed && total ? ` · ${elapsed} / ${total}` : ''}
+          {eta ? <span className="progress-eta"> · осталось ~{eta}</span> : null}
         </span>
+        {showEncoder && (
+          <span className={`encoder-badge${isGpu ? ' encoder-badge--gpu' : ' encoder-badge--cpu'}`}>
+            {icon} {encoderLabel}
+          </span>
+        )}
         <span className="progress-percent">
           {isProcessing ? `${percent}%` : ''}
         </span>

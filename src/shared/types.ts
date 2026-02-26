@@ -36,7 +36,12 @@ export interface ProgressData {
   currentChapter?: number
   elapsed?: string
   total?: string
+  eta?: string
   isProcessing?: boolean
+  /** Human-readable encoder label, e.g. 'NVIDIA GPU', 'Intel Quick Sync', 'AMD GPU', 'CPU' */
+  encoderLabel?: string
+  /** Raw ffmpeg encoder id, e.g. 'h264_nvenc' */
+  encoderId?: string
 }
 
 // Electron API exposed via contextBridge (available as window.electronAPI)

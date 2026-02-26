@@ -605,11 +605,41 @@ html, body, #root {
   color: var(--text-sec);
 }
 
+.progress-eta {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .progress-percent {
   font-size: 11px;
   color: var(--primary-h);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.encoder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.encoder-badge--gpu {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.encoder-badge--cpu {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
 }
 
 /* ===================== BUTTONS ===================== */

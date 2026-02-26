@@ -1,5 +1,6 @@
 import { app, BrowserWindow, IpcMain } from 'electron'
 import { createRequire } from 'module'
+import { execFile } from 'child_process'
 import type { FfprobeData } from 'fluent-ffmpeg'
 import type { ProcessConfig } from '../shared/types'
 
@@ -62,10 +63,10 @@ function parseTimemark(timemark: string | undefined): number {
   return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2])
 }
 
-// Quality presets
+// Quality presets (presets tuned for static-image video — CPU fallback path)
 const QUALITY_PRESETS: Record<string, QualityPreset> = {
-  '1080p': { width: 1920, height: 1080, crf: 18, preset: 'slow' },
-  '720p':  { width: 1280, height: 720,  crf: 22, preset: 'medium' },
+  '1080p': { width: 1920, height: 1080, crf: 18, preset: 'fast' },
+  '720p':  { width: 1280, height: 720,  crf: 22, preset: 'fast' },
   '480p':  { width: 854,  height: 480,  crf: 26, preset: 'fast' }
 }
 
@@ -85,6 +86,92 @@ function cleanChapterName(name: string): string {
     .trim()
 }
 
+// ─── Hardware-encoder detection ──────────────────────────────────────────────
+
+type HWEncoder = 'libx264' | 'h264_nvenc' | 'h264_qsv' | 'h264_amf'
+
+let _cachedEncoder: HWEncoder | null = null
+
+function detectEncoder(): Promise<HWEncoder> {
+  if (_cachedEncoder) return Promise.resolve(_cachedEncoder)
+  return new Promise((resolve) => {
+    execFile(ffmpegPath, ['-hide_banner', '-encoders'], (_err, stdout) => {
+      const out = stdout ?? ''
+      let enc: HWEncoder = 'libx264'
+      if (out.includes('h264_nvenc')) enc = 'h264_nvenc'
+      else if (out.includes('h264_qsv'))  enc = 'h264_qsv'
+      else if (out.includes('h264_amf'))  enc = 'h264_amf'
+      _cachedEncoder = enc
+      console.log(`[FFmpeg] Selected encoder: ${enc}`)
+      resolve(enc)
+    })
+  })
+}
+
+/**
+ * Build the -c:v … output options for the detected encoder.
+ * All paths also set a large GOP (-g 500) because the source is a
+ * static image — inter-frame coding is essentially free after the
+ * first keyframe, making a large GOP safe and beneficial.
+ */
+function buildVideoOutputOptions(encoder: HWEncoder, crf: number, cpuPreset: string): string[] {
+  const gop = ['-g', '500']
+
+  switch (encoder) {
+    case 'h264_nvenc':
+      // NVENC: VBR constant-quality mode; p4 = balanced speed/quality
+      return [
+        '-c:v', 'h264_nvenc',
+        '-preset', 'p4',
+        '-rc', 'vbr',
+        '-cq', String(crf),
+        '-b:v', '0',
+        ...gop
+      ]
+
+    case 'h264_qsv':
+      // Intel Quick Sync: global_quality ≈ CRF, look_ahead for better quality
+      return [
+        '-c:v', 'h264_qsv',
+        '-preset', 'medium',
+        '-global_quality', String(crf),
+        '-look_ahead', '1',
+        ...gop
+      ]
+
+    case 'h264_amf':
+      // AMD AMF: constant-QP mode
+      return [
+        '-c:v', 'h264_amf',
+        '-quality', 'balanced',
+        '-rc', 'cqp',
+        '-qp_i', String(crf),
+        '-qp_p', String(crf),
+        ...gop
+      ]
+
+    default:
+      // libx264: tune stillimage disables motion-estimation overhead;
+      // fast preset + large GOP ≈ 3–5× speedup vs slow for static content.
+      return [
+        '-c:v', 'libx264',
+        '-preset', cpuPreset,
+        '-crf', String(crf),
+        '-tune', 'stillimage',
+        ...gop
+      ]
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
+const ENCODER_LABELS: Record<HWEncoder, string> = {
+  'h264_nvenc': 'NVIDIA GPU',
+  'h264_qsv':  'Intel Quick Sync',
+  'h264_amf':  'AMD GPU',
+  'libx264':   'CPU'
+}
+
 // Main processing function
 export async function processAudiobook(config: ProcessConfig, win: BrowserWindow): Promise<string> {
   const { audioFiles, coverImage, outputPath, quality, showChapterTitles } = config
@@ -92,16 +179,28 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   const { width, height, crf, preset: encPreset } = preset
 
   // 1. Get durations for all audio files
+  // Encoder info is attached to every progress event so the renderer
+  // can display a persistent hardware badge throughout encoding.
+  let encoderLabel = ''
+  let encoderId = ''
+
   const sendProgress = (percent: number, stage: string, extra: Record<string, unknown> = {}): void => {
     win.webContents.send('ffmpeg:progress', {
       percent,
       stage,
       totalChapters: audioFiles.length,
+      encoderLabel: encoderLabel || undefined,
+      encoderId: encoderId || undefined,
       ...extra
     })
   }
 
   sendProgress(0, 'Анализ аудиофайлов...')
+
+  // Detect best available encoder once (result is cached for subsequent calls)
+  const encoder = await detectEncoder()
+  encoderLabel = ENCODER_LABELS[encoder]
+  encoderId = encoder
 
   const durations: number[] = []
   for (let i = 0; i < audioFiles.length; i++) {
@@ -169,6 +268,9 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
 
   const filterComplex = filterParts.join(';')
 
+  // Wall-clock timestamp when ffmpeg actually starts encoding (set in on('start'))
+  let startWallMs = 0
+
   // 3. Run ffmpeg
   return new Promise((resolve, reject) => {
     const cmd = Ffmpeg()
@@ -186,9 +288,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         '-filter_complex', filterComplex,
         '-map', videoMap,
         '-map', '[aout]',
-        '-c:v', 'libx264',
-        '-preset', encPreset,
-        '-crf', String(crf),
+        ...buildVideoOutputOptions(encoder, crf, encPreset),
         '-c:a', 'aac',
         '-b:a', '192k',
         '-movflags', '+faststart',
@@ -197,12 +297,22 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
       .output(outputPath)
       .on('start', (cmdLine: string) => {
         console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')
+        startWallMs = Date.now()
       })
       .on('progress', (prog: { timemark?: string; percent?: number }) => {
         const elapsed = parseTimemark(prog.timemark)
         const percent = totalDuration > 0
           ? Math.min(99, Math.round(5 + (elapsed / totalDuration) * 94))
           : (prog.percent ?? 0)
+
+        // ETA: extrapolate from real wall-clock speed
+        let eta: string | undefined
+        const wallElapsed = (Date.now() - startWallMs) / 1000
+        const ratio = totalDuration > 0 ? elapsed / totalDuration : 0
+        if (ratio > 0.01 && wallElapsed > 1) {
+          const remaining = Math.max(0, (wallElapsed / ratio) - wallElapsed)
+          if (remaining > 0) eta = formatTime(remaining)
+        }
 
         // Find current chapter by elapsed time
         let currentChapter = 1
@@ -216,12 +326,15 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         sendProgress(percent, `Глава ${currentChapter} из ${numAudio}`, {
           currentChapter,
           elapsed: formatTime(elapsed),
-          total: formatTime(totalDuration)
+          total: formatTime(totalDuration),
+          eta
         })
       })
       .on('end', () => {
         currentCommand = null
-        sendProgress(100, 'Готово! 🎉')
+        // Do NOT call sendProgress here — ffmpeg:complete is sent on a different
+        // IPC channel and could be reordered with a late ffmpeg:progress event,
+        // leaving isProcessing stuck as true in the renderer.
         win.webContents.send('ffmpeg:complete', { outputPath })
         resolve(outputPath)
       })

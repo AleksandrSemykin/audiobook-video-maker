@@ -25,13 +25,23 @@ test('planAudioEncoding uses copy for one mp3 source', () => {
 
 test('planAudioEncoding uses AAC for multiple sources', () => {
   const plan = planAudioEncoding([
-    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024 },
-    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024 }
+    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
+    { codec: 'flac', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
   ])
 
   assert.equal(plan.strategy, 'aac')
   assert.ok(typeof plan.targetBitrateKbps === 'number')
   assert.ok((plan.targetBitrateKbps || 0) >= 64)
+})
+
+test('planAudioEncoding uses copy for multiple compatible sources', () => {
+  const plan = planAudioEncoding([
+    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
+    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
+  ])
+
+  assert.equal(plan.strategy, 'copy')
+  assert.match(plan.description, /concat/)
 })
 
 test('selectAacBitrateKbps clamps to safe range and rounds to 16k grid', () => {

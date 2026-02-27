@@ -6,6 +6,8 @@ export interface AudioSourceProbe {
   durationSec: number
   sizeBytes: number
   bitRateBps?: number
+  sampleRateHz?: number
+  channels?: number
 }
 
 export type AudioStrategy = 'copy' | 'aac'
@@ -26,6 +28,33 @@ function clamp(value: number, min: number, max: number): number {
 export function isMp4CopyCodec(codec?: string): boolean {
   if (!codec) return false
   return MP4_COPY_CODECS.has(codec.toLowerCase())
+}
+
+function normalizeCodec(codec?: string): string {
+  return String(codec ?? '').toLowerCase()
+}
+
+function hasValidAudioParam(value?: number): boolean {
+  return Number.isFinite(value) && (value || 0) > 0
+}
+
+export function canStreamCopyConcat(sources: AudioSourceProbe[]): boolean {
+  if (sources.length < 2) return false
+
+  const first = sources[0]
+  const firstCodec = normalizeCodec(first.codec)
+  const firstSampleRate = first.sampleRateHz
+  const firstChannels = first.channels
+
+  if (!isMp4CopyCodec(firstCodec)) return false
+  if (!hasValidAudioParam(firstSampleRate) || !hasValidAudioParam(firstChannels)) return false
+
+  return sources.every((source) => {
+    if (!isMp4CopyCodec(source.codec)) return false
+    if (normalizeCodec(source.codec) !== firstCodec) return false
+    if (!hasValidAudioParam(source.sampleRateHz) || !hasValidAudioParam(source.channels)) return false
+    return source.sampleRateHz === firstSampleRate && source.channels === firstChannels
+  })
 }
 
 export function estimateInputBitrateKbps(sources: AudioSourceProbe[]): number {
@@ -63,6 +92,15 @@ export function planAudioEncoding(sources: AudioSourceProbe[]): AudioEncodingPla
       strategy: 'copy',
       inputBitrateKbps: inputKbps,
       description: `Без перекодирования (${codecLabel})`
+    }
+  }
+
+  if (canStreamCopyConcat(sources)) {
+    const codecLabel = firstCodec ? firstCodec.toUpperCase() : 'аудио'
+    return {
+      strategy: 'copy',
+      inputBitrateKbps: inputKbps,
+      description: `Без перекодирования (${codecLabel}, concat)`
     }
   }
 

@@ -1,10 +1,13 @@
 import { app, BrowserWindow, IpcMain } from 'electron'
 import { createRequire } from 'module'
 import { execFile } from 'child_process'
-import { statSync } from 'fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import type { FfprobeData } from 'fluent-ffmpeg'
 import type { ProcessConfig } from '../shared/types'
 import {
+  canStreamCopyConcat,
   estimateOutputSizeBytes,
   planAudioEncoding,
   type AudioEncodingPlan,
@@ -43,6 +46,13 @@ interface AudioProbeResult {
   size: number
   bitRateBps: number
   codec: string
+  sampleRateHz: number
+  channels: number
+}
+
+interface PreparedConcatInput {
+  listPath: string
+  cleanup: () => void
 }
 
 // Get extended audio info via ffprobe
@@ -56,12 +66,16 @@ async function getAudioProbe(filePath: string): Promise<AudioProbeResult> {
       const duration = Number(fmt.duration ?? audioStream?.duration ?? 0)
       const size = Number(fmt.size ?? 0)
       const bitRateBps = Number(audioStream?.bit_rate ?? fmt.bit_rate ?? 0)
+      const sampleRateHz = Number(audioStream?.sample_rate ?? 0)
+      const channels = Number(audioStream?.channels ?? 0)
 
       resolve({
         duration: Number.isFinite(duration) ? duration : 0,
         size: Number.isFinite(size) ? size : 0,
         bitRateBps: Number.isFinite(bitRateBps) ? bitRateBps : 0,
-        codec: String(audioStream?.codec_name ?? '')
+        codec: String(audioStream?.codec_name ?? ''),
+        sampleRateHz: Number.isFinite(sampleRateHz) ? sampleRateHz : 0,
+        channels: Number.isFinite(channels) ? channels : 0
       })
     })
   })
@@ -127,6 +141,23 @@ function cleanChapterName(name: string): string {
     .replace(/^\d+[.\s_\-]+/, '')
     .replace(/\.(mp3|wav|flac|m4a|ogg|aac)$/i, '')
     .trim()
+}
+
+function escapeConcatFilePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/'/g, "'\\''")
+}
+
+function prepareConcatInputFile(audioFiles: Array<{ path: string }>): PreparedConcatInput {
+  const dirPath = mkdtempSync(join(tmpdir(), 'abvm-concat-'))
+  const listPath = join(dirPath, 'inputs.txt')
+  const content = audioFiles.map((file) => `file '${escapeConcatFilePath(file.path)}'`).join('\n') + '\n'
+  writeFileSync(listPath, content, { encoding: 'utf8' })
+  return {
+    listPath,
+    cleanup: () => {
+      try { rmSync(dirPath, { recursive: true, force: true }) } catch { /* ignore */ }
+    }
+  }
 }
 
 // ─── Hardware-encoder detection ──────────────────────────────────────────────
@@ -204,7 +235,9 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
       codec: probe.codec,
       durationSec: probe.duration,
       sizeBytes: probe.size,
-      bitRateBps: probe.bitRateBps
+      bitRateBps: probe.bitRateBps,
+      sampleRateHz: probe.sampleRateHz,
+      channels: probe.channels
     })
     sendProgress(
       Math.round((i + 1) / audioFiles.length * 4),
@@ -214,6 +247,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   }
 
   const audioPlan: AudioEncodingPlan = planAudioEncoding(audioSources)
+  const canCopyConcatAudio = canStreamCopyConcat(audioSources)
   const totalSourceAudioBytes = audioSources.reduce((sum, item) => sum + (item.sizeBytes || 0), 0)
   const totalDuration = durations.reduce((a, b) => a + b, 0)
   const numAudio = audioFiles.length
@@ -230,11 +264,13 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     `Подготовка: ${audioPlan.description} · ${videoProfile.modeLabel} · ожидаемый размер ~${formatBytes(estimatedOutputBytes)}`
   )
   const audioModeLabel = audioPlan.strategy === 'copy'
-    ? 'звук без перекодирования'
+    ? (numAudio > 1 && canCopyConcatAudio ? 'звук без перекодирования (concat)' : 'звук без перекодирования')
     : `звук AAC ${audioPlan.targetBitrateKbps || 128} кбит/с`
 
   // 2. Build filter_complex string
   const shouldCopySingleAudio = numAudio === 1 && audioPlan.strategy === 'copy'
+  const shouldCopyConcatAudio = numAudio > 1 && canCopyConcatAudio
+  const shouldCopyAudioDirect = shouldCopySingleAudio || shouldCopyConcatAudio
 
   // Video: scale image to preset with letterboxing
   const videoScale =
@@ -246,13 +282,13 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   let videoMap = '[vbase]'
   const filterParts: string[] = [videoScale]
 
-  if (!shouldCopySingleAudio) {
+  if (!shouldCopyAudioDirect) {
     // Multi-file mode requires decoded concat, then re-encode audio.
     const audioInputRefs = audioFiles.map((_, i) => `[${i + 1}:a]`).join('')
     const audioConcat = `${audioInputRefs}concat=n=${numAudio}:v=0:a=1[aout]`
     filterParts.push(audioConcat)
   } else {
-    // Single compatible source can be stream-copied to avoid size bloat and extra CPU work.
+    // Compatible source can be stream-copied to avoid size bloat and extra CPU work.
     audioMap = '1:a:0'
   }
 
@@ -293,9 +329,14 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   }
 
   const filterComplex = filterParts.join(';')
+  const concatInput = shouldCopyConcatAudio ? prepareConcatInputFile(audioFiles) : null
 
   // Wall-clock timestamp when ffmpeg actually starts encoding (set in on('start'))
   let startWallMs = 0
+  let lastElapsedRaw = 0
+  let lastElapsedAdvanceMs = 0
+  const FINALIZATION_NEAR_END_SEC = 1
+  const FINALIZATION_STALL_MS = 20_000
   // Finalization tracker (stage after audio timeline has ended)
   let finalizationStartedMs = 0
   let finalizationLastSampleMs = 0
@@ -344,7 +385,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     details.push(audioModeLabel)
     details.push(videoProfile.modeLabel)
 
-    sendProgress(99, `Завершение сохранения файла: ${details.join(' • ')}`, {
+    sendProgress(99, `FFmpeg завершает контейнер MP4: ${details.join(' • ')}`, {
       currentChapter: numAudio,
       elapsed: totalDuration > 0 ? formatTime(totalDuration) : undefined,
       total: totalDuration > 0 ? formatTime(totalDuration) : undefined,
@@ -366,10 +407,22 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     finalizationTimer = null
   }
 
+  const resetFinalizationState = (): void => {
+    finalizationStartedMs = 0
+    finalizationLastSampleMs = 0
+    finalizationLastSizeBytes = 0
+    finalizationGrowthBps = 0
+  }
+
+  const leaveFinalizationMode = (): void => {
+    stopFinalizationTicker()
+    resetFinalizationState()
+  }
+
   // 3. Run ffmpeg
   return new Promise((resolve, reject) => {
     const cmd = Ffmpeg()
-    const audioOutputOptions = shouldCopySingleAudio
+    const audioOutputOptions = shouldCopyAudioDirect
       ? ['-c:a', 'copy']
       : ['-c:a', 'aac', '-b:a', `${audioPlan.targetBitrateKbps || 128}k`]
 
@@ -380,9 +433,13 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     // waits between identical frames.
     cmd.input(coverImage).inputOptions(['-loop', '1', '-r', '1'])
 
-    // Inputs 1..N: audio files
-    for (const file of audioFiles) {
-      cmd.input(file.path)
+    // Audio inputs
+    if (concatInput) {
+      cmd.input(concatInput.listPath).inputOptions(['-f', 'concat', '-safe', '0'])
+    } else {
+      for (const file of audioFiles) {
+        cmd.input(file.path)
+      }
     }
 
     cmd
@@ -401,16 +458,27 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
       .on('start', (cmdLine: string) => {
         console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')
         startWallMs = Date.now()
+        lastElapsedAdvanceMs = startWallMs
       })
       .on('progress', (prog: { timemark?: string; percent?: number; targetSize?: number }) => {
         const elapsedRaw = parseTimemark(prog.timemark)
-        const elapsed = totalDuration > 0 ? Math.min(elapsedRaw, totalDuration) : elapsedRaw
-        const reachedAudioEnd = totalDuration > 0 && elapsedRaw >= totalDuration
-        if (reachedAudioEnd) {
+        const now = Date.now()
+
+        if (elapsedRaw > lastElapsedRaw + 0.05) {
+          lastElapsedRaw = elapsedRaw
+          lastElapsedAdvanceMs = now
+          if (finalizationTimer) leaveFinalizationMode()
+        }
+
+        const nearEnd = totalDuration > 0 && elapsedRaw >= Math.max(0, totalDuration - FINALIZATION_NEAR_END_SEC)
+        const stalledNearEnd = nearEnd && (now - lastElapsedAdvanceMs >= FINALIZATION_STALL_MS)
+        if (stalledNearEnd) {
           sendFinalizationProgress(prog.targetSize)
           startFinalizationTicker()
           return
         }
+
+        const elapsed = totalDuration > 0 ? Math.min(elapsedRaw, totalDuration) : elapsedRaw
 
         const percent = totalDuration > 0
           ? Math.min(99, Math.round(5 + (elapsed / totalDuration) * 94))
@@ -443,7 +511,8 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         })
       })
       .on('end', () => {
-        stopFinalizationTicker()
+        leaveFinalizationMode()
+        if (concatInput) concatInput.cleanup()
         currentCommand = null
         // Do NOT call sendProgress here — ffmpeg:complete is sent on a different
         // IPC channel and could be reordered with a late ffmpeg:progress event,
@@ -453,7 +522,8 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         resolve(outputPath)
       })
       .on('error', (err: Error) => {
-        stopFinalizationTicker()
+        leaveFinalizationMode()
+        if (concatInput) concatInput.cleanup()
         currentCommand = null
         const msg = err.message || String(err)
         if (msg.includes('SIGKILL') || msg.includes('SIGTERM') || msg.includes('ffmpeg was killed')) {

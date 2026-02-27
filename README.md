@@ -7,8 +7,7 @@ Electron desktop app for converting audiobook chapters into MP4 videos.
 Download binaries from GitHub Releases:
 
 - Windows: `.exe` installer (`nsis`) or `.zip`
-- macOS: `.dmg` (and `.zip`)
-- Linux: `.AppImage`, `.deb`, `.tar.gz`
+- macOS/Linux: no official CI release yet (build locally on target OS)
 
 No Node.js install is required for end users.
 
@@ -45,3 +44,12 @@ git push origin v1.0.1
 - No GitHub secrets are required.
 - Users may see SmartScreen warnings because the app is unsigned.
 - CI uses `--publish never` during build, then uploads assets in a separate release step.
+
+## License
+
+This project is licensed under **GNU GPL v3 or later**.
+
+See:
+
+- `LICENSE`
+- `THIRD_PARTY_NOTICES.md`

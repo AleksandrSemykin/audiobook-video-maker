@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Universal audiobook to MP4 video converter",
   "author": "Aleksandr Semykin (Александр Семыкин)",
+  "license": "GPL-3.0-or-later",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -81,6 +82,16 @@
     "files": [
       "out/**/*",
       "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      }
     ]
   }
 }

@@ -44,3 +44,4 @@ git push origin v1.0.1
 - Current workflow builds unsigned Windows artifacts (`.exe` and `.zip`).
 - No GitHub secrets are required.
 - Users may see SmartScreen warnings because the app is unsigned.
+- CI uses `--publish never` during build, then uploads assets in a separate release step.

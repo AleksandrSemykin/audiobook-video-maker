@@ -8,6 +8,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build && electron-builder",
     "build:win": "electron-vite build && electron-builder --win",
+    "build:win:ci": "electron-vite build && electron-builder --win --publish never",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "preview": "electron-vite preview",

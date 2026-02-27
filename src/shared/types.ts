@@ -11,9 +11,11 @@ export interface AudioFile {
 // Settings
 export type Quality = '1080p' | '720p' | '480p'
 export type Transition = 'none' | 'fade'
+export type EncodingMode = 'max_quality' | 'min_size'
 
 export interface AppSettings {
   quality: Quality
+  encodingMode: EncodingMode
   transitions: Transition
   showChapterTitles: boolean
 }
@@ -24,6 +26,7 @@ export interface ProcessConfig {
   audioFiles: Array<{ path: string; name: string }>
   outputPath: string
   quality: Quality
+  encodingMode: EncodingMode
   showChapterTitles: boolean
   transitions: Transition
 }
@@ -37,6 +40,8 @@ export interface ProgressData {
   elapsed?: string
   total?: string
   eta?: string
+  /** True while ffmpeg is finishing muxing/writing after audio timeline is done */
+  isFinalizing?: boolean
   isProcessing?: boolean
   /** Human-readable encoder label, e.g. 'NVIDIA GPU', 'Intel Quick Sync', 'AMD GPU', 'CPU' */
   encoderLabel?: string

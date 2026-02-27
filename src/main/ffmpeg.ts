@@ -1,22 +1,26 @@
 import { app, BrowserWindow, IpcMain } from 'electron'
 import { createRequire } from 'module'
 import { execFile } from 'child_process'
+import { statSync } from 'fs'
 import type { FfprobeData } from 'fluent-ffmpeg'
 import type { ProcessConfig } from '../shared/types'
+import {
+  estimateOutputSizeBytes,
+  planAudioEncoding,
+  type AudioEncodingPlan,
+  type AudioSourceProbe
+} from './encoding-plan'
+import {
+  buildVideoOutputOptions,
+  resolveVideoProfile,
+  type HWEncoder
+} from './video-profiles'
 
 // Use createRequire for CJS packages in ESM context
 const require = createRequire(import.meta.url)
 const ffmpegStatic: string = require('ffmpeg-static')
 const ffprobeStatic: { path: string } = require('ffprobe-static')
 const Ffmpeg: typeof import('fluent-ffmpeg') = require('fluent-ffmpeg')
-
-// Quality preset definition
-interface QualityPreset {
-  width: number
-  height: number
-  crf: number
-  preset: string
-}
 
 // Resolve binary paths (handle asar unpacking)
 function resolveBin(binPath: string): string {
@@ -34,17 +38,39 @@ Ffmpeg.setFfprobePath(ffprobePath)
 
 let currentCommand: ReturnType<typeof Ffmpeg> | null = null
 
-// Get audio duration and file size via ffprobe
-export function getAudioDuration(filePath: string): Promise<{ duration: number; size: number }> {
+interface AudioProbeResult {
+  duration: number
+  size: number
+  bitRateBps: number
+  codec: string
+}
+
+// Get extended audio info via ffprobe
+async function getAudioProbe(filePath: string): Promise<AudioProbeResult> {
   return new Promise((resolve, reject) => {
     Ffmpeg.ffprobe(filePath, (err: Error | null, metadata: FfprobeData) => {
       if (err) return reject(err)
+
+      const fmt = metadata.format ?? {}
+      const audioStream = metadata.streams?.find((s) => s.codec_type === 'audio')
+      const duration = Number(fmt.duration ?? audioStream?.duration ?? 0)
+      const size = Number(fmt.size ?? 0)
+      const bitRateBps = Number(audioStream?.bit_rate ?? fmt.bit_rate ?? 0)
+
       resolve({
-        duration: metadata.format.duration ?? 0,
-        size: metadata.format.size ?? 0
+        duration: Number.isFinite(duration) ? duration : 0,
+        size: Number.isFinite(size) ? size : 0,
+        bitRateBps: Number.isFinite(bitRateBps) ? bitRateBps : 0,
+        codec: String(audioStream?.codec_name ?? '')
       })
     })
   })
+}
+
+// Get audio duration and file size via ffprobe (renderer helper)
+export async function getAudioDuration(filePath: string): Promise<{ duration: number; size: number }> {
+  const { duration, size } = await getAudioProbe(filePath)
+  return { duration, size }
 }
 
 // Format seconds → HH:MM:SS
@@ -65,19 +91,26 @@ function formatWallTime(seconds: number): string {
   return `${s} с`
 }
 
+// Format bytes as human-readable size/speed
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  const digits = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
+}
+
 // Parse HH:MM:SS.ms → seconds
 function parseTimemark(timemark: string | undefined): number {
   if (!timemark || typeof timemark !== 'string') return 0
   const parts = timemark.split(':')
   if (parts.length !== 3) return 0
   return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2])
-}
-
-// Quality presets (presets tuned for static-image video — CPU fallback path)
-const QUALITY_PRESETS: Record<string, QualityPreset> = {
-  '1080p': { width: 1920, height: 1080, crf: 18, preset: 'fast' },
-  '720p':  { width: 1280, height: 720,  crf: 22, preset: 'fast' },
-  '480p':  { width: 854,  height: 480,  crf: 26, preset: 'fast' }
 }
 
 // Escape text for ffmpeg drawtext filter
@@ -98,8 +131,6 @@ function cleanChapterName(name: string): string {
 
 // ─── Hardware-encoder detection ──────────────────────────────────────────────
 
-type HWEncoder = 'libx264' | 'h264_nvenc' | 'h264_qsv' | 'h264_amf'
-
 let _cachedEncoder: HWEncoder | null = null
 
 function detectEncoder(): Promise<HWEncoder> {
@@ -118,69 +149,6 @@ function detectEncoder(): Promise<HWEncoder> {
   })
 }
 
-/**
- * Build the -c:v … output options for the detected encoder.
- * GOP is set to 30 which equals 30 s of keyframe interval at 1 fps —
- * safe for seek precision on a static-image audiobook video.
- */
-function buildVideoOutputOptions(encoder: HWEncoder, crf: number, cpuPreset: string): string[] {
-  // At 1 fps, a GOP of 30 means one keyframe every 30 seconds — good seek granularity.
-  const gop = ['-g', '30']
-
-  switch (encoder) {
-    case 'h264_nvenc':
-      // p1 = fastest NVENC preset. Quality difference vs p4 is invisible on a
-      // static image. -surfaces 64 keeps the encoder's internal queue full so
-      // the GPU never stalls waiting for the next frame.
-      return [
-        '-c:v', 'h264_nvenc',
-        '-preset', 'p1',
-        '-rc', 'vbr',
-        '-cq', String(crf),
-        '-b:v', '0',
-        '-surfaces', '64',
-        ...gop
-      ]
-
-    case 'h264_qsv':
-      // async_depth 4: QSV will buffer up to 4 frames internally, keeping
-      // the GPU pipeline full even when CPU filter output is slightly uneven.
-      return [
-        '-c:v', 'h264_qsv',
-        '-preset', 'faster',
-        '-global_quality', String(crf),
-        '-look_ahead', '0',
-        '-async_depth', '4',
-        ...gop
-      ]
-
-    case 'h264_amf':
-      // preanalysis 0: disables CPU-side pre-analysis so AMF encodes
-      // immediately without waiting for lookahead frames.
-      return [
-        '-c:v', 'h264_amf',
-        '-quality', 'speed',
-        '-rc', 'cqp',
-        '-qp_i', String(crf),
-        '-qp_p', String(crf),
-        '-preanalysis', '0',
-        ...gop
-      ]
-
-    default:
-      // libx264 CPU path: tune stillimage + fast preset + large GOP.
-      // GOP stays large (500) on CPU because there is no GPU pipeline
-      // to keep filled — fewer keyframes simply means less work.
-      return [
-        '-c:v', 'libx264',
-        '-preset', cpuPreset,
-        '-crf', String(crf),
-        '-tune', 'stillimage',
-        '-g', '500'
-      ]
-  }
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 
 const ENCODER_LABELS: Record<HWEncoder, string> = {
@@ -192,9 +160,16 @@ const ENCODER_LABELS: Record<HWEncoder, string> = {
 
 // Main processing function
 export async function processAudiobook(config: ProcessConfig, win: BrowserWindow): Promise<string> {
-  const { audioFiles, coverImage, outputPath, quality, showChapterTitles } = config
-  const preset = QUALITY_PRESETS[quality] ?? QUALITY_PRESETS['1080p']
-  const { width, height, crf, preset: encPreset } = preset
+  const {
+    audioFiles,
+    coverImage,
+    outputPath,
+    quality,
+    encodingMode = 'min_size',
+    showChapterTitles
+  } = config
+  const videoProfile = resolveVideoProfile(quality, encodingMode)
+  const { width, height } = videoProfile
 
   // 1. Get durations for all audio files
   // Encoder info is attached to every progress event so the renderer
@@ -221,9 +196,16 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   encoderId = encoder
 
   const durations: number[] = []
+  const audioSources: AudioSourceProbe[] = []
   for (let i = 0; i < audioFiles.length; i++) {
-    const { duration: dur } = await getAudioDuration(audioFiles[i].path)
-    durations.push(dur)
+    const probe = await getAudioProbe(audioFiles[i].path)
+    durations.push(probe.duration)
+    audioSources.push({
+      codec: probe.codec,
+      durationSec: probe.duration,
+      sizeBytes: probe.size,
+      bitRateBps: probe.bitRateBps
+    })
     sendProgress(
       Math.round((i + 1) / audioFiles.length * 4),
       `Анализ: ${audioFiles[i].name}`,
@@ -231,13 +213,28 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     )
   }
 
+  const audioPlan: AudioEncodingPlan = planAudioEncoding(audioSources)
+  const totalSourceAudioBytes = audioSources.reduce((sum, item) => sum + (item.sizeBytes || 0), 0)
   const totalDuration = durations.reduce((a, b) => a + b, 0)
   const numAudio = audioFiles.length
+  const estimatedOutputBytes = estimateOutputSizeBytes(
+    totalDuration,
+    audioPlan,
+    totalSourceAudioBytes,
+    quality,
+    encodingMode
+  )
+
+  sendProgress(
+    5,
+    `Подготовка: ${audioPlan.description} · ${videoProfile.modeLabel} · ожидаемый размер ~${formatBytes(estimatedOutputBytes)}`
+  )
+  const audioModeLabel = audioPlan.strategy === 'copy'
+    ? 'звук без перекодирования'
+    : `звук AAC ${audioPlan.targetBitrateKbps || 128} кбит/с`
 
   // 2. Build filter_complex string
-  // Audio: concat all audio streams
-  const audioInputRefs = audioFiles.map((_, i) => `[${i + 1}:a]`).join('')
-  const audioConcat = `${audioInputRefs}concat=n=${numAudio}:v=0:a=1[aout]`
+  const shouldCopySingleAudio = numAudio === 1 && audioPlan.strategy === 'copy'
 
   // Video: scale image to preset with letterboxing
   const videoScale =
@@ -245,8 +242,19 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
     `format=yuv420p[vbase]`
 
+  let audioMap = '[aout]'
   let videoMap = '[vbase]'
-  const filterParts: string[] = [videoScale, audioConcat]
+  const filterParts: string[] = [videoScale]
+
+  if (!shouldCopySingleAudio) {
+    // Multi-file mode requires decoded concat, then re-encode audio.
+    const audioInputRefs = audioFiles.map((_, i) => `[${i + 1}:a]`).join('')
+    const audioConcat = `${audioInputRefs}concat=n=${numAudio}:v=0:a=1[aout]`
+    filterParts.push(audioConcat)
+  } else {
+    // Single compatible source can be stream-copied to avoid size bloat and extra CPU work.
+    audioMap = '1:a:0'
+  }
 
   if (showChapterTitles && numAudio > 0) {
     // Calculate chapter start timestamps
@@ -288,10 +296,82 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
 
   // Wall-clock timestamp when ffmpeg actually starts encoding (set in on('start'))
   let startWallMs = 0
+  // Finalization tracker (stage after audio timeline has ended)
+  let finalizationStartedMs = 0
+  let finalizationLastSampleMs = 0
+  let finalizationLastSizeBytes = 0
+  let finalizationGrowthBps = 0
+  let finalizationTimer: NodeJS.Timeout | null = null
+
+  const readOutputSizeBytes = (targetSizeKb?: number): number => {
+    if (typeof targetSizeKb === 'number' && Number.isFinite(targetSizeKb) && targetSizeKb > 0) {
+      return Math.round(targetSizeKb * 1024)
+    }
+    try {
+      return statSync(outputPath).size
+    } catch {
+      return 0
+    }
+  }
+
+  const updateFinalizationSample = (sizeBytes: number): void => {
+    if (sizeBytes <= 0) return
+    const now = Date.now()
+    if (finalizationLastSampleMs > 0 && sizeBytes >= finalizationLastSizeBytes) {
+      const dt = (now - finalizationLastSampleMs) / 1000
+      if (dt >= 0.5) {
+        finalizationGrowthBps = (sizeBytes - finalizationLastSizeBytes) / dt
+      }
+    }
+    finalizationLastSampleMs = now
+    finalizationLastSizeBytes = sizeBytes
+  }
+
+  const sendFinalizationProgress = (targetSizeKb?: number): void => {
+    const now = Date.now()
+    if (finalizationStartedMs === 0) {
+      finalizationStartedMs = now
+      finalizationLastSampleMs = now
+    }
+
+    const sizeBytes = readOutputSizeBytes(targetSizeKb)
+    updateFinalizationSample(sizeBytes)
+
+    const finalizationElapsedSec = (now - finalizationStartedMs) / 1000
+    const details: string[] = [`прошло ${formatWallTime(finalizationElapsedSec)}`]
+    if (sizeBytes > 0) details.push(`размер ${formatBytes(sizeBytes)}`)
+    if (finalizationGrowthBps > 0) details.push(`запись ${formatBytes(finalizationGrowthBps)}/с`)
+    details.push(audioModeLabel)
+    details.push(videoProfile.modeLabel)
+
+    sendProgress(99, `Завершение сохранения файла: ${details.join(' • ')}`, {
+      currentChapter: numAudio,
+      elapsed: totalDuration > 0 ? formatTime(totalDuration) : undefined,
+      total: totalDuration > 0 ? formatTime(totalDuration) : undefined,
+      eta: undefined,
+      isFinalizing: true
+    })
+  }
+
+  const startFinalizationTicker = (): void => {
+    if (finalizationTimer) return
+    finalizationTimer = setInterval(() => {
+      sendFinalizationProgress()
+    }, 1000)
+  }
+
+  const stopFinalizationTicker = (): void => {
+    if (!finalizationTimer) return
+    clearInterval(finalizationTimer)
+    finalizationTimer = null
+  }
 
   // 3. Run ffmpeg
   return new Promise((resolve, reject) => {
     const cmd = Ffmpeg()
+    const audioOutputOptions = shouldCopySingleAudio
+      ? ['-c:a', 'copy']
+      : ['-c:a', 'aac', '-b:a', `${audioPlan.targetBitrateKbps || 128}k`]
 
     // Input 0: cover image — looped at 1 fps.
     // 1 fps means the entire filter_complex + encoder pipeline processes
@@ -309,11 +389,9 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
       .outputOptions([
         '-filter_complex', filterComplex,
         '-map', videoMap,
-        '-map', '[aout]',
-        ...buildVideoOutputOptions(encoder, crf, encPreset),
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-movflags', '+faststart',
+        '-map', audioMap,
+        ...buildVideoOutputOptions(encoder, videoProfile),
+        ...audioOutputOptions,
         '-shortest',
         // Use all available CPU cores for the filter pipeline so it feeds
         // the GPU encoder as fast as possible.
@@ -324,11 +402,19 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')
         startWallMs = Date.now()
       })
-      .on('progress', (prog: { timemark?: string; percent?: number }) => {
-        const elapsed = parseTimemark(prog.timemark)
+      .on('progress', (prog: { timemark?: string; percent?: number; targetSize?: number }) => {
+        const elapsedRaw = parseTimemark(prog.timemark)
+        const elapsed = totalDuration > 0 ? Math.min(elapsedRaw, totalDuration) : elapsedRaw
+        const reachedAudioEnd = totalDuration > 0 && elapsedRaw >= totalDuration
+        if (reachedAudioEnd) {
+          sendFinalizationProgress(prog.targetSize)
+          startFinalizationTicker()
+          return
+        }
+
         const percent = totalDuration > 0
           ? Math.min(99, Math.round(5 + (elapsed / totalDuration) * 94))
-          : (prog.percent ?? 0)
+          : Math.min(99, Math.round(prog.percent ?? 0))
 
         // ETA: extrapolate from real wall-clock speed
         let eta: string | undefined
@@ -340,7 +426,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         }
 
         // Find current chapter by elapsed time
-        let currentChapter = 1
+        let currentChapter = durations.length > 0 ? 1 : 0
         let accum = 0
         for (let i = 0; i < durations.length; i++) {
           accum += durations[i]
@@ -351,11 +437,13 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         sendProgress(percent, `Глава ${currentChapter} из ${numAudio}`, {
           currentChapter,
           elapsed: formatTime(elapsed),
-          total: formatTime(totalDuration),
-          eta
+          total: totalDuration > 0 ? formatTime(totalDuration) : undefined,
+          eta,
+          isFinalizing: false
         })
       })
       .on('end', () => {
+        stopFinalizationTicker()
         currentCommand = null
         // Do NOT call sendProgress here — ffmpeg:complete is sent on a different
         // IPC channel and could be reordered with a late ffmpeg:progress event,
@@ -365,6 +453,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         resolve(outputPath)
       })
       .on('error', (err: Error) => {
+        stopFinalizationTicker()
         currentCommand = null
         const msg = err.message || String(err)
         if (msg.includes('SIGKILL') || msg.includes('SIGTERM') || msg.includes('ffmpeg was killed')) {

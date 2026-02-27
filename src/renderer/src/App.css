@@ -439,6 +439,7 @@ html, body, #root {
 .radio-group {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .radio-option {

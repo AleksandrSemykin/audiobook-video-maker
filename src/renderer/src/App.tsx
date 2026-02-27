@@ -32,6 +32,7 @@ export default function App(): React.ReactElement {
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
   const [settings, setSettings] = useState<AppSettings>({
     quality: '1080p',
+    encodingMode: 'min_size',
     transitions: 'none',
     showChapterTitles: false
   })
@@ -156,6 +157,7 @@ export default function App(): React.ReactElement {
       audioFiles: audioFiles.map(f => ({ path: f.path, name: f.name })),
       outputPath,
       quality: settings.quality,
+      encodingMode: settings.encodingMode,
       showChapterTitles: settings.showChapterTitles,
       transitions: settings.transitions
     })

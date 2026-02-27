@@ -16,17 +16,28 @@ const ENCODER_ICONS: Record<string, string> = {
 }
 
 export function ProgressBar({ progress }: ProgressBarProps): React.ReactElement {
-  const { percent = 0, stage = '', elapsed, total, eta, isProcessing, encoderLabel, encoderId } = progress
+  const {
+    percent = 0,
+    stage = '',
+    elapsed,
+    total,
+    eta,
+    isProcessing,
+    isFinalizing,
+    encoderLabel,
+    encoderId
+  } = progress
 
   const showEncoder = isProcessing && !!encoderLabel
   const isGpu = encoderId ? encoderId !== 'libx264' : false
   const icon = encoderId ? (ENCODER_ICONS[encoderId] ?? '🖥') : ''
+  const isIndeterminate = !!isProcessing && (percent < 5 || !!isFinalizing)
 
   return (
     <div className="progress-container">
       <div className="progress-track">
         <div
-          className={`progress-fill${isProcessing && percent < 5 ? ' indeterminate' : ''}`}
+          className={`progress-fill${isIndeterminate ? ' indeterminate' : ''}`}
           style={{ width: `${Math.min(100, percent)}%` }}
         />
       </div>

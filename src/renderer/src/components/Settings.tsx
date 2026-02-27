@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AppSettings, Quality, Transition } from '../../../shared/types'
+import type { AppSettings, EncodingMode, Quality, Transition } from '../../../shared/types'
 
 interface QualityOption {
   value: Quality
@@ -10,6 +10,12 @@ interface QualityOption {
 interface TransitionOption {
   value: Transition
   label: string
+}
+
+interface ModeOption {
+  value: EncodingMode
+  label: string
+  hint: string
 }
 
 interface SettingsProps {
@@ -32,6 +38,11 @@ const QUALITY_OPTIONS: QualityOption[] = [
 const TRANSITION_OPTIONS: TransitionOption[] = [
   { value: 'none', label: 'Без переходов' },
   { value: 'fade', label: 'Fade' }
+]
+
+const MODE_OPTIONS: ModeOption[] = [
+  { value: 'max_quality', label: 'Макс. качество', hint: 'Лучше картинка, больше размер' },
+  { value: 'min_size', label: 'Минимальный размер', hint: 'Меньше файл, быстрее запись' }
 ]
 
 export function Settings({
@@ -94,6 +105,30 @@ export function Settings({
           </div>
         </div>
 
+        {/* Encoding mode */}
+        <div className="settings-row">
+          <span className="settings-label">Режим:</span>
+          <div className="radio-group">
+            {MODE_OPTIONS.map(opt => (
+              <label
+                key={opt.value}
+                className={`radio-option${settings.encodingMode === opt.value ? ' active' : ''}`}
+                title={opt.hint}
+              >
+                <input
+                  type="radio"
+                  name="encodingMode"
+                  value={opt.value}
+                  checked={settings.encodingMode === opt.value}
+                  onChange={() => set('encodingMode', opt.value)}
+                  disabled={disabled}
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
         {/* Chapter titles toggle */}
         <div className="settings-row">
           <span className="settings-label">Названия глав:</span>
@@ -108,9 +143,6 @@ export function Settings({
             </span>
           </div>
         </div>
-
-        {/* Spacer for grid alignment */}
-        <div />
 
         {/* Video filename input */}
         <div className="settings-row settings-full">

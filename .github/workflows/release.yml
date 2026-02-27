@@ -42,9 +42,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-app/**/*.exe
-            dist-app/**/*.msi
-            dist-app/**/*.zip
-            dist-app/**/*.blockmap
+            dist-app/AudioBook Video Maker-*-win-*.exe
+            dist-app/AudioBook Video Maker-*-win-*.zip
+            dist-app/AudioBook Video Maker-*-win-*.exe.blockmap
             dist-app/latest*.yml
           fail_on_unmatched_files: false

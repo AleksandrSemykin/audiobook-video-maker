@@ -18,6 +18,10 @@ interface RendererDictionary {
     titleAddAudio: string
     titleChooseOutput: string
     switchLanguage: string
+    updateAvailable: (version: string) => string
+    updateDownloading: (percent: number) => string
+    updateDownloaded: (version: string) => string
+    updateErrorPrefix: string
   }
   progress: {
     etaPrefix: string
@@ -88,7 +92,11 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       titleChooseCover: 'Выберите обложку',
       titleAddAudio: 'Добавьте аудиофайлы',
       titleChooseOutput: 'Выберите путь сохранения',
-      switchLanguage: 'Сменить язык'
+      switchLanguage: 'Сменить язык',
+      updateAvailable: (version) => `Доступна новая версия ${version}. Загружаю обновление...`,
+      updateDownloading: (percent) => `Загрузка обновления: ${percent}%`,
+      updateDownloaded: (version) => `Обновление ${version} готово к установке`,
+      updateErrorPrefix: 'Не удалось проверить обновления'
     },
     progress: {
       etaPrefix: 'осталось ~'
@@ -177,7 +185,11 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       titleChooseCover: 'Select cover image',
       titleAddAudio: 'Add audio files',
       titleChooseOutput: 'Choose output path',
-      switchLanguage: 'Switch language'
+      switchLanguage: 'Switch language',
+      updateAvailable: (version) => `Version ${version} is available. Downloading update...`,
+      updateDownloading: (percent) => `Downloading update: ${percent}%`,
+      updateDownloaded: (version) => `Update ${version} is ready to install`,
+      updateErrorPrefix: 'Failed to check updates'
     },
     progress: {
       etaPrefix: 'remaining ~'

@@ -4,7 +4,7 @@ import { AudioList } from './components/AudioList'
 import { Settings } from './components/Settings'
 import { ProgressBar } from './components/ProgressBar'
 import { ToastContainer, useToast } from './components/Toast'
-import type { AudioFile, AppSettings, ProgressData } from '../../shared/types'
+import type { AppUpdateData, AudioFile, AppSettings, ProgressData } from '../../shared/types'
 import { getRendererTexts } from './i18n'
 
 // Auto-detect order number from filename
@@ -60,6 +60,7 @@ export default function App(): React.ReactElement {
   videoNameRef.current = videoName
   const languageRef = useRef(settings.language)
   languageRef.current = settings.language
+  const updateProgressMilestoneRef = useRef(0)
   // Gate for stale ffmpeg:progress events that arrive after ffmpeg:complete/cancelled/error.
   // Set to true as soon as the conversion is finished; reset on next start.
   const isDoneRef = useRef(false)
@@ -81,6 +82,10 @@ export default function App(): React.ReactElement {
     } catch {
       // ignore storage access errors
     }
+  }, [settings.language])
+
+  useEffect(() => {
+    window.electronAPI.setLanguage(settings.language)
   }, [settings.language])
 
   // Listen to FFmpeg events
@@ -122,6 +127,46 @@ export default function App(): React.ReactElement {
       unsubComplete()
       unsubCancelled()
       unsubError()
+    }
+  }, [])
+
+  // Listen to app update events
+  useEffect(() => {
+    const unsubAppUpdate = window.electronAPI.onAppUpdate((data: AppUpdateData) => {
+      const locale = getRendererTexts(languageRef.current)
+      if (data.status === 'available') {
+        if (data.version) {
+          updateProgressMilestoneRef.current = 0
+          addToast(locale.app.updateAvailable(data.version), 'info', 5000)
+        }
+
+        if (typeof data.percent === 'number') {
+          const milestone =
+            data.percent >= 100 ? 100 :
+              data.percent >= 75 ? 75 :
+                data.percent >= 50 ? 50 :
+                  data.percent >= 25 ? 25 : 0
+
+          if (milestone > updateProgressMilestoneRef.current) {
+            updateProgressMilestoneRef.current = milestone
+            addToast(locale.app.updateDownloading(milestone), 'info', 2800)
+          }
+        }
+      }
+
+      if (data.status === 'downloaded') {
+        updateProgressMilestoneRef.current = 100
+        addToast(locale.app.updateDownloaded(data.version ?? ''), 'success', 6000)
+      }
+
+      if (data.status === 'error') {
+        const suffix = data.message ? `: ${data.message}` : ''
+        addToast(`${locale.app.updateErrorPrefix}${suffix}`, 'warning', 7000)
+      }
+    })
+
+    return () => {
+      unsubAppUpdate()
     }
   }, [])
 

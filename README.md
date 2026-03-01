@@ -45,6 +45,19 @@ git push origin v1.0.1
 - Users may see SmartScreen warnings because the app is unsigned.
 - CI uses `--publish never` during build, then uploads assets in a separate release step.
 
+## In-app auto updates (Windows)
+
+- The app checks for updates automatically after launch, then every 30 minutes.
+- If a new version is found, it downloads in background and shows a notification.
+- When download is complete, the user can choose:
+  - install now (app restarts with new version),
+  - install later.
+- To disable update checks (for local testing), set environment variable:
+
+```bash
+ABVM_DISABLE_AUTO_UPDATE=1
+```
+
 ## License
 
 This project is licensed under **GNU GPL v3 or later**.

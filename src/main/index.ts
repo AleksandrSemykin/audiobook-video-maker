@@ -1,8 +1,16 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
 import { join } from 'path'
+import { autoUpdater } from 'electron-updater'
 import { setupFfmpegHandlers } from './ffmpeg'
-import type { Language } from '../shared/types'
-import { getMainDialogs } from './i18n'
+import type { AppUpdateData, Language } from '../shared/types'
+import { getMainDialogs, getMainUpdater } from './i18n'
+
+const AUTO_UPDATE_INITIAL_DELAY_MS = 10_000
+const AUTO_UPDATE_INTERVAL_MS = 30 * 60 * 1000
+const DISABLE_AUTO_UPDATE_ENV = 'ABVM_DISABLE_AUTO_UPDATE'
+
+let currentLanguage: Language = app.getLocale().toLowerCase().startsWith('ru') ? 'ru' : 'en'
+let autoUpdateInterval: NodeJS.Timeout | null = null
 
 // Must be called before app.whenReady() — registers custom scheme as privileged
 // so it can bypass CSP and be treated as secure (same as https://)
@@ -41,6 +49,71 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+function sendUpdateEvent(win: BrowserWindow, payload: AppUpdateData): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send('app:update', payload)
+  }
+}
+
+function setupAutoUpdates(win: BrowserWindow): void {
+  if (!app.isPackaged) return
+  if (process.env[DISABLE_AUTO_UPDATE_ENV] === '1') return
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = false
+
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdateEvent(win, { status: 'checking' })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    sendUpdateEvent(win, { status: 'available', version: info.version })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    sendUpdateEvent(win, { status: 'not-available' })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateEvent(win, { status: 'available', percent: Math.round(progress.percent) })
+  })
+
+  autoUpdater.on('error', (error) => {
+    const message = error instanceof Error ? error.message : String(error)
+    sendUpdateEvent(win, { status: 'error', message })
+  })
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    sendUpdateEvent(win, { status: 'downloaded', version: info.version })
+
+    const texts = getMainUpdater(currentLanguage)
+    const result = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: app.getName(),
+      message: texts.updateReadyTitle,
+      detail: texts.updateReadyDetail(info.version),
+      buttons: [texts.installNow, texts.later],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    })
+
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall()
+    }
+  })
+
+  const checkForUpdates = (): void => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      sendUpdateEvent(win, { status: 'error', message })
+    })
+  }
+
+  setTimeout(checkForUpdates, AUTO_UPDATE_INITIAL_DELAY_MS)
+  autoUpdateInterval = setInterval(checkForUpdates, AUTO_UPDATE_INTERVAL_MS)
+}
+
 app.whenReady().then(() => {
   // Serve local files via custom protocol (avoids CORS issues when renderer
   // runs on http://localhost in dev mode and needs to load file:// images)
@@ -59,6 +132,9 @@ app.whenReady().then(() => {
     else win.maximize()
   })
   ipcMain.on('window:close', () => win.close())
+  ipcMain.on('app:setLanguage', (_event, language: Language) => {
+    currentLanguage = language
+  })
 
   // Dialog handlers
   ipcMain.handle('dialog:openAudioFiles', async (_event, language: Language = 'ru') => {
@@ -106,6 +182,7 @@ app.whenReady().then(() => {
 
   // Setup FFmpeg handlers
   setupFfmpegHandlers(ipcMain, win)
+  setupAutoUpdates(win)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -113,5 +190,9 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  if (autoUpdateInterval) {
+    clearInterval(autoUpdateInterval)
+    autoUpdateInterval = null
+  }
   if (process.platform !== 'darwin') app.quit()
 })

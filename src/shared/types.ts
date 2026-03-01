@@ -52,12 +52,22 @@ export interface ProgressData {
   encoderId?: string
 }
 
+export type AppUpdateStatus = 'checking' | 'available' | 'not-available' | 'downloaded' | 'error'
+
+export interface AppUpdateData {
+  status: AppUpdateStatus
+  version?: string
+  message?: string
+  percent?: number
+}
+
 // Electron API exposed via contextBridge (available as window.electronAPI)
 export interface ElectronAPI {
   // Window controls
   minimizeWindow: () => void
   maximizeWindow: () => void
   closeWindow: () => void
+  setLanguage: (language: Language) => void
 
   // File dialogs
   openAudioFiles: (language?: Language) => Promise<string[]>
@@ -79,4 +89,5 @@ export interface ElectronAPI {
   onComplete: (callback: (data: { outputPath: string; totalTime: string }) => void) => () => void
   onCancelled: (callback: () => void) => () => void
   onError: (callback: (data: { message: string }) => void) => () => void
+  onAppUpdate: (callback: (data: AppUpdateData) => void) => () => void
 }

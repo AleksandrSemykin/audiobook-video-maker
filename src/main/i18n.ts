@@ -9,6 +9,12 @@ interface MainDictionary {
     audioFilterName: string
     imageFilterName: string
   }
+  updater: {
+    updateReadyTitle: string
+    updateReadyDetail: (version: string) => string
+    installNow: string
+    later: string
+  }
   ffmpeg: {
     analyzingAudioFiles: string
     analyzingFile: (name: string) => string
@@ -46,6 +52,13 @@ const MAIN_DICTIONARY: Record<Language, MainDictionary> = {
       selectOutputFolder: 'Выберите папку для сохранения видео',
       audioFilterName: 'Аудио',
       imageFilterName: 'Изображения'
+    },
+    updater: {
+      updateReadyTitle: 'Доступно обновление приложения',
+      updateReadyDetail: (version) =>
+        `Новая версия ${version} уже загружена. Установить сейчас?`,
+      installNow: 'Установить сейчас',
+      later: 'Позже'
     },
     ffmpeg: {
       analyzingAudioFiles: 'Анализ аудиофайлов...',
@@ -87,6 +100,13 @@ const MAIN_DICTIONARY: Record<Language, MainDictionary> = {
       audioFilterName: 'Audio',
       imageFilterName: 'Images'
     },
+    updater: {
+      updateReadyTitle: 'Application update is ready',
+      updateReadyDetail: (version) =>
+        `Version ${version} has been downloaded. Install now?`,
+      installNow: 'Install now',
+      later: 'Later'
+    },
     ffmpeg: {
       analyzingAudioFiles: 'Analyzing audio files...',
       analyzingFile: (name) => `Analyzing: ${name}`,
@@ -126,6 +146,10 @@ function getDictionary(language: Language): MainDictionary {
 
 export function getMainDialogs(language: Language): MainDictionary['dialogs'] {
   return getDictionary(language).dialogs
+}
+
+export function getMainUpdater(language: Language): MainDictionary['updater'] {
+  return getDictionary(language).updater
 }
 
 export function getMainFfmpeg(language: Language): MainDictionary['ffmpeg'] {

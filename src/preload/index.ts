@@ -1,16 +1,18 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { ElectronAPI, ProcessConfig, ProgressData } from '../shared/types'
+import type { AppUpdateData, ElectronAPI, Language, ProcessConfig, ProgressData } from '../shared/types'
 
 const api: ElectronAPI = {
   // Window controls
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
+  setLanguage: (language) => ipcRenderer.send('app:setLanguage', language),
 
   // File dialogs
   openAudioFiles: (language) => ipcRenderer.invoke('dialog:openAudioFiles', language),
   openImageFile: (language) => ipcRenderer.invoke('dialog:openImageFile', language),
-  saveOutputFile: (defaultName?: string, language) => ipcRenderer.invoke('dialog:saveOutputFile', defaultName, language),
+  saveOutputFile: (defaultName?: string, language?: Language) =>
+    ipcRenderer.invoke('dialog:saveOutputFile', defaultName, language),
   selectFolder: (language) => ipcRenderer.invoke('dialog:selectFolder', language),
   openFolder: (folderPath: string) => ipcRenderer.send('dialog:openFolder', folderPath),
 
@@ -42,6 +44,11 @@ const api: ElectronAPI = {
     const handler = (_event: Electron.IpcRendererEvent, data: { message: string }) => callback(data)
     ipcRenderer.on('ffmpeg:error', handler)
     return () => ipcRenderer.removeListener('ffmpeg:error', handler)
+  },
+  onAppUpdate: (callback: (data: AppUpdateData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: AppUpdateData) => callback(data)
+    ipcRenderer.on('app:update', handler)
+    return () => ipcRenderer.removeListener('app:update', handler)
   }
 }
 

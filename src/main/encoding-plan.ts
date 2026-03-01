@@ -1,5 +1,6 @@
-import type { EncodingMode, Quality } from '../shared/types'
+import type { EncodingMode, Language, Quality } from '../shared/types'
 import { resolveVideoProfile } from './video-profiles'
+import { getEncodingTexts } from './i18n'
 
 export interface AudioSourceProbe {
   codec?: string
@@ -81,26 +82,27 @@ export function selectAacBitrateKbps(inputKbps: number): number {
   return clamp(roundedTo16, 64, 160)
 }
 
-export function planAudioEncoding(sources: AudioSourceProbe[]): AudioEncodingPlan {
+export function planAudioEncoding(sources: AudioSourceProbe[], language: Language = 'ru'): AudioEncodingPlan {
+  const texts = getEncodingTexts(language)
   const inputKbps = estimateInputBitrateKbps(sources)
   const sourceCount = sources.length
   const firstCodec = sources[0]?.codec
 
   if (sourceCount === 1 && isMp4CopyCodec(firstCodec)) {
-    const codecLabel = firstCodec ? firstCodec.toUpperCase() : 'аудио'
+    const codecLabel = firstCodec ? firstCodec.toUpperCase() : texts.fallbackCodecLabel
     return {
       strategy: 'copy',
       inputBitrateKbps: inputKbps,
-      description: `Без перекодирования (${codecLabel})`
+      description: texts.noReencode(codecLabel)
     }
   }
 
   if (canStreamCopyConcat(sources)) {
-    const codecLabel = firstCodec ? firstCodec.toUpperCase() : 'аудио'
+    const codecLabel = firstCodec ? firstCodec.toUpperCase() : texts.fallbackCodecLabel
     return {
       strategy: 'copy',
       inputBitrateKbps: inputKbps,
-      description: `Без перекодирования (${codecLabel}, concat)`
+      description: texts.noReencodeConcat(codecLabel)
     }
   }
 
@@ -109,7 +111,7 @@ export function planAudioEncoding(sources: AudioSourceProbe[]): AudioEncodingPla
     strategy: 'aac',
     inputBitrateKbps: inputKbps,
     targetBitrateKbps: targetKbps,
-    description: `AAC ${targetKbps} кбит/с`
+    description: texts.aacBitrate(targetKbps)
   }
 }
 

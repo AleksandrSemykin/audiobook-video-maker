@@ -1,6 +1,8 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
 import { join } from 'path'
 import { setupFfmpegHandlers } from './ffmpeg'
+import type { Language } from '../shared/types'
+import { getMainDialogs } from './i18n'
 
 // Must be called before app.whenReady() — registers custom scheme as privileged
 // so it can bypass CSP and be treated as secure (same as https://)
@@ -59,36 +61,40 @@ app.whenReady().then(() => {
   ipcMain.on('window:close', () => win.close())
 
   // Dialog handlers
-  ipcMain.handle('dialog:openAudioFiles', async () => {
+  ipcMain.handle('dialog:openAudioFiles', async (_event, language: Language = 'ru') => {
+    const texts = getMainDialogs(language)
     const result = await dialog.showOpenDialog(win, {
-      title: 'Выберите аудиофайлы',
-      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac'] }],
+      title: texts.selectAudioFiles,
+      filters: [{ name: texts.audioFilterName, extensions: ['mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac'] }],
       properties: ['openFile', 'multiSelections']
     })
     return result.canceled ? [] : result.filePaths
   })
 
-  ipcMain.handle('dialog:openImageFile', async () => {
+  ipcMain.handle('dialog:openImageFile', async (_event, language: Language = 'ru') => {
+    const texts = getMainDialogs(language)
     const result = await dialog.showOpenDialog(win, {
-      title: 'Выберите обложку',
-      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+      title: texts.selectCover,
+      filters: [{ name: texts.imageFilterName, extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
       properties: ['openFile']
     })
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle('dialog:saveOutputFile', async (_event, defaultName?: string) => {
+  ipcMain.handle('dialog:saveOutputFile', async (_event, defaultName?: string, language: Language = 'ru') => {
+    const texts = getMainDialogs(language)
     const result = await dialog.showSaveDialog(win, {
-      title: 'Сохранить видео как...',
+      title: texts.saveVideoAs,
       defaultPath: defaultName || 'audiobook.mp4',
       filters: [{ name: 'MP4 Video', extensions: ['mp4'] }]
     })
     return result.canceled ? null : result.filePath
   })
 
-  ipcMain.handle('dialog:selectFolder', async () => {
+  ipcMain.handle('dialog:selectFolder', async (_event, language: Language = 'ru') => {
+    const texts = getMainDialogs(language)
     const result = await dialog.showOpenDialog(win, {
-      title: 'Выберите папку для сохранения видео',
+      title: texts.selectOutputFolder,
       properties: ['openDirectory', 'createDirectory']
     })
     return result.canceled ? null : result.filePaths[0]

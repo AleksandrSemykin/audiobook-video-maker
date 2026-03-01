@@ -103,6 +103,32 @@ html, body, #root {
 
 .titlebar-btn:hover { background: var(--card); color: var(--text); }
 .titlebar-btn.close:hover { background: var(--danger); color: white; }
+.titlebar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.titlebar-btn:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
+.titlebar-lang-btn {
+  width: auto;
+  min-width: 58px;
+  padding: 0 8px;
+  gap: 4px;
+}
+
+.titlebar-lang-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.titlebar-lang-code {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
 
 /* ===================== MAIN CONTENT ===================== */
 .main-content {

@@ -1,17 +1,22 @@
 import React, { useState } from 'react'
+import type { Language } from '../../../shared/types'
+import { getRendererTexts } from '../i18n'
 
 interface CoverPickerProps {
   coverPath: string | null
   onSelect: (path: string) => void
   onClear: () => void
   disabled?: boolean
+  language: Language
 }
 
-export function CoverPicker({ coverPath, onSelect, onClear, disabled }: CoverPickerProps): React.ReactElement {
+export function CoverPicker({ coverPath, onSelect, onClear, disabled, language }: CoverPickerProps): React.ReactElement {
   const [dragOver, setDragOver] = useState(false)
+  const t = getRendererTexts(language)
+  const [emptyLine1, emptyLine2 = ''] = t.coverPicker.emptyText.split('\n')
 
   const handleClick = async (): Promise<void> => {
-    const path = await window.electronAPI.openImageFile()
+    const path = await window.electronAPI.openImageFile(language)
     if (path) onSelect(path)
   }
 
@@ -38,12 +43,12 @@ export function CoverPicker({ coverPath, onSelect, onClear, disabled }: CoverPic
   return (
     <div className="cover-panel">
       <div className="cover-panel-header">
-        <div className="panel-label">Обложка</div>
+        <div className="panel-label">{t.coverPicker.panelLabel}</div>
         <button
           className="btn btn-icon"
           onClick={handleClick}
           disabled={disabled}
-          title="Выбрать обложку"
+          title={t.coverPicker.chooseCoverTitle}
           style={{ fontSize: 18, fontWeight: 400 }}
         >
           +
@@ -61,19 +66,19 @@ export function CoverPicker({ coverPath, onSelect, onClear, disabled }: CoverPic
           <>
             <img
               src={imgSrc ?? undefined}
-              alt="Cover"
+              alt={t.coverPicker.altCover}
               draggable={false}
             />
             <div className="cover-overlay">
               <span style={{ fontSize: 22 }}>🖼️</span>
-              <span className="cover-overlay-text">Заменить</span>
+              <span className="cover-overlay-text">{t.coverPicker.replace}</span>
             </div>
           </>
         ) : (
           <div className="cover-placeholder">
             <span className="cover-placeholder-icon">🖼️</span>
             <span className="cover-placeholder-text">
-              Перетащите обложку<br />или нажмите для выбора
+              {emptyLine1}<br />{emptyLine2}
             </span>
           </div>
         )}
@@ -84,7 +89,7 @@ export function CoverPicker({ coverPath, onSelect, onClear, disabled }: CoverPic
           <>
             <span className="cover-name" title={coverPath}>{fileName}</span>
             <button className="btn-clear" onClick={onClear} disabled={disabled}>
-              Очистить
+              {t.coverPicker.clear}
             </button>
           </>
         ) : (

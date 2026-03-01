@@ -5,6 +5,7 @@ import { Settings } from './components/Settings'
 import { ProgressBar } from './components/ProgressBar'
 import { ToastContainer, useToast } from './components/Toast'
 import type { AudioFile, AppSettings, ProgressData } from '../../shared/types'
+import { getRendererTexts } from './i18n'
 
 // Auto-detect order number from filename
 function getFileOrder(name: string): number {
@@ -13,6 +14,17 @@ function getFileOrder(name: string): number {
 }
 
 let fileIdCounter = 0
+const LANGUAGE_STORAGE_KEY = 'abvm.language'
+
+function readSavedLanguage(): AppSettings['language'] {
+  try {
+    const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    if (saved === 'ru' || saved === 'en') return saved
+  } catch {
+    // ignore storage access errors
+  }
+  return 'ru'
+}
 
 function createFileEntry(path: string): AudioFile {
   const name = path.split(/[/\\]/).pop() ?? path
@@ -30,12 +42,13 @@ function createFileEntry(path: string): AudioFile {
 export default function App(): React.ReactElement {
   const [coverPath, setCoverPath] = useState<string | null>(null)
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
-  const [settings, setSettings] = useState<AppSettings>({
+  const [settings, setSettings] = useState<AppSettings>(() => ({
     quality: '1080p',
     encodingMode: 'min_size',
     transitions: 'none',
-    showChapterTitles: false
-  })
+    showChapterTitles: false,
+    language: readSavedLanguage()
+  }))
   const [videoName, setVideoName] = useState<string>('')
   const [outputFolder, setOutputFolder] = useState<string>('')
   // Computed full output path — derived from folder + name
@@ -45,6 +58,8 @@ export default function App(): React.ReactElement {
   // Ref so stable addAudioPaths callback can read current videoName
   const videoNameRef = useRef(videoName)
   videoNameRef.current = videoName
+  const languageRef = useRef(settings.language)
+  languageRef.current = settings.language
   // Gate for stale ffmpeg:progress events that arrive after ffmpeg:complete/cancelled/error.
   // Set to true as soon as the conversion is finished; reset on next start.
   const isDoneRef = useRef(false)
@@ -56,8 +71,17 @@ export default function App(): React.ReactElement {
   })
   const [lastOutput, setLastOutput] = useState<string | null>(null)
   const [lastTotalTime, setLastTotalTime] = useState<string | null>(null)
+  const t = getRendererTexts(settings.language)
 
   const { toasts, addToast, removeToast } = useToast()
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, settings.language)
+    } catch {
+      // ignore storage access errors
+    }
+  }, [settings.language])
 
   // Listen to FFmpeg events
   useEffect(() => {
@@ -67,26 +91,29 @@ export default function App(): React.ReactElement {
     })
 
     const unsubComplete = window.electronAPI.onComplete(({ outputPath: out, totalTime }) => {
+      const locale = getRendererTexts(languageRef.current)
       isDoneRef.current = true
       setIsProcessing(false)
       setLastOutput(out)
       setLastTotalTime(totalTime)
-      setProgress({ percent: 100, stage: 'Готово! 🎉', isProcessing: false })
-      addToast(`Видео сохранено: ${out.split(/[/\\]/).pop()}`, 'success', 6000)
+      setProgress({ percent: 100, stage: locale.app.doneStage, isProcessing: false })
+      addToast(locale.app.videoSaved(out.split(/[/\\]/).pop() ?? out), 'success', 6000)
     })
 
     const unsubCancelled = window.electronAPI.onCancelled(() => {
+      const locale = getRendererTexts(languageRef.current)
       isDoneRef.current = true
       setIsProcessing(false)
       setProgress({ percent: 0, stage: '', isProcessing: false })
-      addToast('Создание видео отменено', 'warning')
+      addToast(locale.app.cancelled, 'warning')
     })
 
     const unsubError = window.electronAPI.onError(({ message }) => {
+      const locale = getRendererTexts(languageRef.current)
       isDoneRef.current = true
       setIsProcessing(false)
       setProgress({ percent: 0, stage: '', isProcessing: false })
-      addToast(`Ошибка FFmpeg: ${message}`, 'error', 8000)
+      addToast(`${locale.app.ffmpegErrorPrefix}: ${message}`, 'error', 8000)
       console.error('FFmpeg error:', message)
     })
 
@@ -121,28 +148,28 @@ export default function App(): React.ReactElement {
   }, [])
 
   const handleAddFiles = useCallback(async () => {
-    const paths = await window.electronAPI.openAudioFiles()
+    const paths = await window.electronAPI.openAudioFiles(settings.language)
     if (paths?.length) addAudioPaths(paths)
-  }, [addAudioPaths])
+  }, [addAudioPaths, settings.language])
 
   // Select output folder
   const handleSelectFolder = async (): Promise<void> => {
-    const folder = await window.electronAPI.selectFolder()
+    const folder = await window.electronAPI.selectFolder(settings.language)
     if (folder) setOutputFolder(folder)
   }
 
   // Start processing
   const handleStart = (): void => {
     if (!coverPath) {
-      addToast('Выберите обложку для видео', 'warning')
+      addToast(t.app.chooseCoverWarning, 'warning')
       return
     }
     if (audioFiles.length === 0) {
-      addToast('Добавьте хотя бы один аудиофайл', 'warning')
+      addToast(t.app.addAudioWarning, 'warning')
       return
     }
     if (!outputPath) {
-      addToast('Укажите путь для сохранения видео', 'warning')
+      addToast(t.app.chooseOutputWarning, 'warning')
       return
     }
 
@@ -150,7 +177,7 @@ export default function App(): React.ReactElement {
     setLastOutput(null)
     setLastTotalTime(null)
     isDoneRef.current = false
-    setProgress({ percent: 0, stage: 'Инициализация...', isProcessing: true })
+    setProgress({ percent: 0, stage: t.app.initStage, isProcessing: true })
 
     window.electronAPI.startProcessing({
       coverImage: coverPath,
@@ -159,7 +186,8 @@ export default function App(): React.ReactElement {
       quality: settings.quality,
       encodingMode: settings.encodingMode,
       showChapterTitles: settings.showChapterTitles,
-      transitions: settings.transitions
+      transitions: settings.transitions,
+      language: settings.language
     })
   }
 
@@ -174,7 +202,16 @@ export default function App(): React.ReactElement {
     }
   }
 
+  const handleToggleLanguage = (): void => {
+    if (isProcessing) return
+    setSettings(prev => ({
+      ...prev,
+      language: prev.language === 'ru' ? 'en' : 'ru'
+    }))
+  }
+
   const canStart = coverPath && audioFiles.length > 0 && outputPath && !isProcessing
+  const languageFlag = settings.language === 'ru' ? '🇷🇺' : '🇺🇸'
 
   return (
     <div className="app">
@@ -185,6 +222,16 @@ export default function App(): React.ReactElement {
           <span className="titlebar-title">AudioBook Video Maker</span>
         </div>
         <div className="titlebar-controls">
+          <button
+            className="titlebar-btn titlebar-lang-btn"
+            onClick={handleToggleLanguage}
+            title={t.app.switchLanguage}
+            aria-label={t.app.switchLanguage}
+            disabled={isProcessing}
+          >
+            <span className="titlebar-lang-icon">{languageFlag}</span>
+            <span className="titlebar-lang-code">{settings.language.toUpperCase()}</span>
+          </button>
           <button className="titlebar-btn" onClick={() => window.electronAPI.minimizeWindow()}>─</button>
           <button className="titlebar-btn" onClick={() => window.electronAPI.maximizeWindow()}>□</button>
           <button className="titlebar-btn close" onClick={() => window.electronAPI.closeWindow()}>✕</button>
@@ -200,6 +247,7 @@ export default function App(): React.ReactElement {
             onSelect={setCoverPath}
             onClear={() => setCoverPath(null)}
             disabled={isProcessing}
+            language={settings.language}
           />
 
           <div className="divider" />
@@ -210,6 +258,7 @@ export default function App(): React.ReactElement {
             onAdd={handleAddFiles}
             onDropFiles={addAudioPaths}
             disabled={isProcessing}
+            language={settings.language}
           />
         </div>
 
@@ -231,7 +280,7 @@ export default function App(): React.ReactElement {
           {lastOutput && !isProcessing ? (
             <div className="success-banner">
               <span>✅</span>
-              <span>Видео создано:</span>
+              <span>{t.app.videoCreated}</span>
               <span className="success-banner-path" title={lastOutput}>
                 {lastOutput}
               </span>
@@ -243,7 +292,7 @@ export default function App(): React.ReactElement {
                 onClick={handleOpenFolder}
                 style={{ padding: '5px 12px', fontSize: 12 }}
               >
-                📂 Открыть
+                {t.app.openFolder}
               </button>
             </div>
           ) : (
@@ -252,22 +301,23 @@ export default function App(): React.ReactElement {
               onCancel={handleCancel}
               onOpenFolder={handleOpenFolder}
               outputPath={lastOutput}
+              language={settings.language}
             />
           )}
 
           {/* Action buttons */}
           {isProcessing ? (
             <button className="btn btn-danger" onClick={handleCancel}>
-              ⏹ Отмена
+              {t.app.cancel}
             </button>
           ) : (
             <button
               className="btn btn-primary"
               onClick={handleStart}
               disabled={!canStart}
-              title={!coverPath ? 'Выберите обложку' : !audioFiles.length ? 'Добавьте аудиофайлы' : !outputPath ? 'Выберите путь сохранения' : ''}
+              title={!coverPath ? t.app.titleChooseCover : !audioFiles.length ? t.app.titleAddAudio : !outputPath ? t.app.titleChooseOutput : ''}
             >
-              ▶ Создать видео
+              {t.app.createVideo}
             </button>
           )}
         </div>

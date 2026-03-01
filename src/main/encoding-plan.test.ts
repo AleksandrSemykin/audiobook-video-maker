@@ -23,6 +23,16 @@ test('planAudioEncoding uses copy for one mp3 source', () => {
   assert.match(plan.description, /Без перекодирования/)
 })
 
+test('planAudioEncoding returns English descriptions when language is en', () => {
+  const plan = planAudioEncoding([
+    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
+    { codec: 'flac', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
+  ], 'en')
+
+  assert.equal(plan.strategy, 'aac')
+  assert.match(plan.description, /AAC .* kbps/)
+})
+
 test('planAudioEncoding uses AAC for multiple sources', () => {
   const plan = planAudioEncoding([
     { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },

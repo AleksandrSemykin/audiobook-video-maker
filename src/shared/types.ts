@@ -12,12 +12,14 @@ export interface AudioFile {
 export type Quality = '1080p' | '720p' | '480p'
 export type Transition = 'none' | 'fade'
 export type EncodingMode = 'max_quality' | 'min_size'
+export type Language = 'ru' | 'en'
 
 export interface AppSettings {
   quality: Quality
   encodingMode: EncodingMode
   transitions: Transition
   showChapterTitles: boolean
+  language: Language
 }
 
 // Config sent from renderer → main via IPC to start ffmpeg processing
@@ -29,6 +31,7 @@ export interface ProcessConfig {
   encodingMode: EncodingMode
   showChapterTitles: boolean
   transitions: Transition
+  language: Language
 }
 
 // Progress update from main → renderer
@@ -57,10 +60,10 @@ export interface ElectronAPI {
   closeWindow: () => void
 
   // File dialogs
-  openAudioFiles: () => Promise<string[]>
-  openImageFile: () => Promise<string | null>
-  saveOutputFile: (defaultName?: string) => Promise<string | null>
-  selectFolder: () => Promise<string | null>
+  openAudioFiles: (language?: Language) => Promise<string[]>
+  openImageFile: (language?: Language) => Promise<string | null>
+  saveOutputFile: (defaultName?: string, language?: Language) => Promise<string | null>
+  selectFolder: (language?: Language) => Promise<string | null>
   openFolder: (folderPath: string) => void
 
   // File path resolution

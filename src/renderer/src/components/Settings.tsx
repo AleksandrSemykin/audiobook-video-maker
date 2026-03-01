@@ -1,5 +1,6 @@
 import React from 'react'
 import type { AppSettings, EncodingMode, Quality, Transition } from '../../../shared/types'
+import { getRendererTexts } from '../i18n'
 
 interface QualityOption {
   value: Quality
@@ -29,22 +30,6 @@ interface SettingsProps {
   disabled?: boolean
 }
 
-const QUALITY_OPTIONS: QualityOption[] = [
-  { value: '1080p', label: '1080p', hint: 'YouTube HD' },
-  { value: '720p',  label: '720p',  hint: 'Компактный' },
-  { value: '480p',  label: '480p',  hint: 'Лёгкий' }
-]
-
-const TRANSITION_OPTIONS: TransitionOption[] = [
-  { value: 'none', label: 'Без переходов' },
-  { value: 'fade', label: 'Fade' }
-]
-
-const MODE_OPTIONS: ModeOption[] = [
-  { value: 'max_quality', label: 'Макс. качество', hint: 'Лучше картинка, больше размер' },
-  { value: 'min_size', label: 'Минимальный размер', hint: 'Меньше файл, быстрее запись' }
-]
-
 export function Settings({
   settings, onChange,
   videoName, onVideoNameChange,
@@ -52,17 +37,42 @@ export function Settings({
   outputPath,
   disabled
 }: SettingsProps): React.ReactElement {
+  const t = getRendererTexts(settings.language)
+
+  const qualityOptions: QualityOption[] = [
+    { value: '1080p', label: '1080p', hint: t.options.qualityHints['1080p'] },
+    { value: '720p', label: '720p', hint: t.options.qualityHints['720p'] },
+    { value: '480p', label: '480p', hint: t.options.qualityHints['480p'] }
+  ]
+
+  const transitionOptions: TransitionOption[] = [
+    { value: 'none', label: t.options.transitions.none },
+    { value: 'fade', label: t.options.transitions.fade }
+  ]
+
+  const modeOptions: ModeOption[] = [
+    {
+      value: 'max_quality',
+      label: t.options.modeLabels.max_quality,
+      hint: t.options.modeHints.max_quality
+    },
+    {
+      value: 'min_size',
+      label: t.options.modeLabels.min_size,
+      hint: t.options.modeHints.min_size
+    }
+  ]
+
   const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]): void =>
     onChange({ ...settings, [key]: value })
 
   return (
     <div className="settings-panel">
       <div className="settings-grid">
-        {/* Quality */}
         <div className="settings-row">
-          <span className="settings-label">Качество видео:</span>
+          <span className="settings-label">{t.settings.qualityLabel}</span>
           <div className="radio-group">
-            {QUALITY_OPTIONS.map(opt => (
+            {qualityOptions.map(opt => (
               <label
                 key={opt.value}
                 className={`radio-option${settings.quality === opt.value ? ' active' : ''}`}
@@ -82,11 +92,10 @@ export function Settings({
           </div>
         </div>
 
-        {/* Transitions */}
         <div className="settings-row">
-          <span className="settings-label">Переходы:</span>
+          <span className="settings-label">{t.settings.transitionsLabel}</span>
           <div className="radio-group">
-            {TRANSITION_OPTIONS.map(opt => (
+            {transitionOptions.map(opt => (
               <label
                 key={opt.value}
                 className={`radio-option${settings.transitions === opt.value ? ' active' : ''}`}
@@ -105,11 +114,10 @@ export function Settings({
           </div>
         </div>
 
-        {/* Encoding mode */}
         <div className="settings-row">
-          <span className="settings-label">Режим:</span>
+          <span className="settings-label">{t.settings.modeLabel}</span>
           <div className="radio-group">
-            {MODE_OPTIONS.map(opt => (
+            {modeOptions.map(opt => (
               <label
                 key={opt.value}
                 className={`radio-option${settings.encodingMode === opt.value ? ' active' : ''}`}
@@ -129,9 +137,8 @@ export function Settings({
           </div>
         </div>
 
-        {/* Chapter titles toggle */}
         <div className="settings-row">
-          <span className="settings-label">Названия глав:</span>
+          <span className="settings-label">{t.settings.chapterTitlesLabel}</span>
           <div
             className="toggle-wrapper"
             onClick={() => !disabled && set('showChapterTitles', !settings.showChapterTitles)}
@@ -139,48 +146,46 @@ export function Settings({
           >
             <div className={`toggle${settings.showChapterTitles ? ' on' : ''}`} />
             <span className="toggle-label">
-              {settings.showChapterTitles ? 'Показывать' : 'Скрыть'}
+              {settings.showChapterTitles ? t.settings.showChapterTitles : t.settings.hideChapterTitles}
             </span>
           </div>
         </div>
 
-        {/* Video filename input */}
         <div className="settings-row settings-full">
-          <span className="settings-label">Название файла:</span>
+          <span className="settings-label">{t.settings.fileNameLabel}</span>
           <div className="output-path-row">
             <input
               type="text"
               className="output-path-input output-name-input"
               value={videoName}
               onChange={e => onVideoNameChange(e.target.value)}
-              placeholder="Введите название видео..."
+              placeholder={t.settings.fileNamePlaceholder}
               disabled={disabled}
             />
             <span className="output-ext-label">.mp4</span>
           </div>
         </div>
 
-        {/* Output folder */}
         <div className="settings-row settings-full">
-          <span className="settings-label">Папка сохранения:</span>
+          <span className="settings-label">{t.settings.outputFolderLabel}</span>
           <div className="output-path-row">
             <div
               className="output-path-input"
               onClick={!disabled ? onSelectFolder : undefined}
-              title={outputPath || 'Нажмите для выбора папки'}
+              title={outputPath || t.settings.outputFolderTitle}
               style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
             >
               {outputFolder ? (
                 outputPath
               ) : (
-                <span style={{ color: 'var(--muted)' }}>Выберите папку...</span>
+                <span style={{ color: 'var(--muted)' }}>{t.settings.outputFolderPlaceholder}</span>
               )}
             </div>
             <button
               className="btn btn-secondary btn-icon"
               onClick={onSelectFolder}
               disabled={disabled}
-              title="Выбрать папку"
+              title={t.settings.chooseFolderTitle}
               style={{ width: 36, height: 36 }}
             >
               📁

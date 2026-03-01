@@ -15,7 +15,8 @@ import {
   arrayMove
 } from '@dnd-kit/sortable'
 import { AudioItem } from './AudioItem'
-import type { AudioFile } from '../../../shared/types'
+import type { AudioFile, Language } from '../../../shared/types'
+import { formatAudioDuration, getRendererTexts } from '../i18n'
 
 interface AudioListProps {
   files: AudioFile[]
@@ -23,23 +24,20 @@ interface AudioListProps {
   onAdd: () => void
   onDropFiles: (paths: string[]) => void
   disabled?: boolean
+  language: Language
 }
 
 const AUDIO_EXTS = /\.(mp3|wav|flac|m4a|ogg|aac)$/i
 
-function formatTotalDuration(files: AudioFile[]): string | null {
+function formatTotalDuration(files: AudioFile[], language: Language): string | null {
   const total = files.reduce((acc, f) => acc + (f.duration ?? 0), 0)
-  if (total === 0) return null
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = Math.floor(total % 60)
-  if (h > 0) return `${h} ч ${m} мин`
-  if (m > 0) return `${m} мин ${s} сек`
-  return `${s} сек`
+  return formatAudioDuration(total, language)
 }
 
-export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }: AudioListProps): React.ReactElement {
+export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled, language }: AudioListProps): React.ReactElement {
   const [osDragOver, setOsDragOver] = useState(false)
+  const t = getRendererTexts(language)
+  const [emptyLine1, emptyLine2 = ''] = t.audioList.emptyText.split('\n')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -80,18 +78,17 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
     if (paths.length > 0 && onDropFiles) onDropFiles(paths)
   }, [onDropFiles])
 
-  const duration = formatTotalDuration(files)
-  const plural = (n: number): string => n === 1 ? 'файл' : n < 5 ? 'файла' : 'файлов'
+  const duration = formatTotalDuration(files, language)
 
   return (
     <div className="audio-panel">
       <div className="audio-panel-header">
-        <div className="panel-label">Аудиофайлы</div>
+        <div className="panel-label">{t.audioList.panelLabel}</div>
         <button
           className="btn btn-icon"
           onClick={onAdd}
           disabled={disabled}
-          title="Добавить файлы"
+          title={t.audioList.addFilesTitle}
           style={{ fontSize: 18, fontWeight: 400 }}
         >
           +
@@ -111,7 +108,7 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
           <div className="audio-list-empty">
             <span className="audio-list-empty-icon">🎙️</span>
             <span className="audio-list-empty-text">
-              Нажмите «+» или перетащите<br />MP3-файлы из проводника
+              {emptyLine1}<br />{emptyLine2}
             </span>
           </div>
         ) : (
@@ -128,6 +125,7 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
                     file={file}
                     index={index}
                     onRemove={handleRemove}
+                    language={language}
                   />
                 ))}
               </div>
@@ -140,11 +138,11 @@ export function AudioList({ files, onFilesChange, onAdd, onDropFiles, disabled }
         {files.length > 0 ? (
           <>
             <span className="audio-stats">
-              {files.length} {plural(files.length)}
+              {t.audioList.filesCount(files.length)}
               {duration ? ` · ${duration}` : ''}
             </span>
             <button className="btn-clear" onClick={() => onFilesChange([])} disabled={disabled}>
-              Очистить
+              {t.audioList.clear}
             </button>
           </>
         ) : (

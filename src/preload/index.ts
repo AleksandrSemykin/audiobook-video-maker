@@ -8,10 +8,10 @@ const api: ElectronAPI = {
   closeWindow: () => ipcRenderer.send('window:close'),
 
   // File dialogs
-  openAudioFiles: () => ipcRenderer.invoke('dialog:openAudioFiles'),
-  openImageFile: () => ipcRenderer.invoke('dialog:openImageFile'),
-  saveOutputFile: (defaultName?: string) => ipcRenderer.invoke('dialog:saveOutputFile', defaultName),
-  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  openAudioFiles: (language) => ipcRenderer.invoke('dialog:openAudioFiles', language),
+  openImageFile: (language) => ipcRenderer.invoke('dialog:openImageFile', language),
+  saveOutputFile: (defaultName?: string, language) => ipcRenderer.invoke('dialog:saveOutputFile', defaultName, language),
+  selectFolder: (language) => ipcRenderer.invoke('dialog:selectFolder', language),
   openFolder: (folderPath: string) => ipcRenderer.send('dialog:openFolder', folderPath),
 
   // File path resolution (Electron 29+: File.path is removed, use webUtils)

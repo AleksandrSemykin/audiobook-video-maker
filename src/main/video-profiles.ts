@@ -1,4 +1,5 @@
-import type { EncodingMode, Quality } from '../shared/types'
+import type { EncodingMode, Language, Quality } from '../shared/types'
+import { getModeLabel } from './i18n'
 
 export type HWEncoder = 'libx264' | 'h264_nvenc' | 'h264_qsv' | 'h264_amf'
 
@@ -6,7 +7,6 @@ interface ModePreset {
   crf: number
   cpuPreset: string
   estimateVideoKbps: number
-  label: string
 }
 
 interface QualityPreset {
@@ -31,29 +31,33 @@ const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     width: 1920,
     height: 1080,
     modePresets: {
-      max_quality: { crf: 28, cpuPreset: 'medium', estimateVideoKbps: 65, label: 'режим: макс. качество' },
-      min_size: { crf: 34, cpuPreset: 'fast', estimateVideoKbps: 25, label: 'режим: минимальный размер' }
+      max_quality: { crf: 28, cpuPreset: 'medium', estimateVideoKbps: 65 },
+      min_size: { crf: 34, cpuPreset: 'fast', estimateVideoKbps: 25 }
     }
   },
   '720p': {
     width: 1280,
     height: 720,
     modePresets: {
-      max_quality: { crf: 30, cpuPreset: 'medium', estimateVideoKbps: 45, label: 'режим: макс. качество' },
-      min_size: { crf: 36, cpuPreset: 'fast', estimateVideoKbps: 18, label: 'режим: минимальный размер' }
+      max_quality: { crf: 30, cpuPreset: 'medium', estimateVideoKbps: 45 },
+      min_size: { crf: 36, cpuPreset: 'fast', estimateVideoKbps: 18 }
     }
   },
   '480p': {
     width: 854,
     height: 480,
     modePresets: {
-      max_quality: { crf: 32, cpuPreset: 'medium', estimateVideoKbps: 30, label: 'режим: макс. качество' },
-      min_size: { crf: 38, cpuPreset: 'fast', estimateVideoKbps: 12, label: 'режим: минимальный размер' }
+      max_quality: { crf: 32, cpuPreset: 'medium', estimateVideoKbps: 30 },
+      min_size: { crf: 38, cpuPreset: 'fast', estimateVideoKbps: 12 }
     }
   }
 }
 
-export function resolveVideoProfile(quality: Quality, mode: EncodingMode = 'min_size'): VideoProfile {
+export function resolveVideoProfile(
+  quality: Quality,
+  mode: EncodingMode = 'min_size',
+  language: Language = 'ru'
+): VideoProfile {
   const preset = QUALITY_PRESETS[quality] ?? QUALITY_PRESETS['1080p']
   const modePreset = preset.modePresets[mode] ?? preset.modePresets.min_size
 
@@ -65,7 +69,7 @@ export function resolveVideoProfile(quality: Quality, mode: EncodingMode = 'min_
     crf: modePreset.crf,
     cpuPreset: modePreset.cpuPreset,
     estimateVideoKbps: modePreset.estimateVideoKbps,
-    modeLabel: modePreset.label
+    modeLabel: getModeLabel(mode, language)
   }
 }
 

@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { FfprobeData } from 'fluent-ffmpeg'
-import type { ProcessConfig } from '../shared/types'
+import type { Language, ProcessConfig } from '../shared/types'
 import {
   canStreamCopyConcat,
   estimateOutputSizeBytes,
@@ -18,6 +18,7 @@ import {
   resolveVideoProfile,
   type HWEncoder
 } from './video-profiles'
+import { formatWallTimeLocalized, getMainFfmpeg } from './i18n'
 
 // Use createRequire for CJS packages in ESM context
 const require = createRequire(import.meta.url)
@@ -95,16 +96,6 @@ function formatTime(seconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-// Format wall-clock seconds → human-friendly string, e.g. "1 мин 45 с"
-function formatWallTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h} ч ${String(m).padStart(2, '0')} мин`
-  if (m > 0) return `${m} мин ${String(s).padStart(2, '0')} с`
-  return `${s} с`
-}
-
 // Format bytes as human-readable size/speed
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -164,20 +155,61 @@ function prepareConcatInputFile(audioFiles: Array<{ path: string }>): PreparedCo
 
 let _cachedEncoder: HWEncoder | null = null
 
-function detectEncoder(): Promise<HWEncoder> {
-  if (_cachedEncoder) return Promise.resolve(_cachedEncoder)
+function getAvailableEncoders(): Promise<string> {
   return new Promise((resolve) => {
     execFile(ffmpegPath, ['-hide_banner', '-encoders'], (_err, stdout) => {
-      const out = stdout ?? ''
-      let enc: HWEncoder = 'libx264'
-      if (out.includes('h264_nvenc')) enc = 'h264_nvenc'
-      else if (out.includes('h264_qsv'))  enc = 'h264_qsv'
-      else if (out.includes('h264_amf'))  enc = 'h264_amf'
-      _cachedEncoder = enc
-      console.log(`[FFmpeg] Selected encoder: ${enc}`)
-      resolve(enc)
+      resolve(stdout ?? '')
     })
   })
+}
+
+function probeHardwareEncoder(encoder: Exclude<HWEncoder, 'libx264'>): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probeProfile = resolveVideoProfile('720p', 'min_size')
+    const args = [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-f', 'lavfi',
+      '-i', `color=c=black:s=${probeProfile.width}x${probeProfile.height}:r=1:d=1`,
+      '-frames:v', '1',
+      '-an',
+      ...buildVideoOutputOptions(encoder, probeProfile),
+      '-f', 'null',
+      '-'
+    ]
+
+    execFile(ffmpegPath, args, (err, _stdout, stderr) => {
+      if (!err) {
+        resolve(true)
+        return
+      }
+
+      const details = String(stderr ?? '').trim().split(/\r?\n/).slice(-1)[0] || (err.message || String(err))
+      console.warn(`[FFmpeg] Probe failed for ${encoder}: ${details}`)
+      resolve(false)
+    })
+  })
+}
+
+async function detectEncoder(): Promise<HWEncoder> {
+  if (_cachedEncoder) return _cachedEncoder
+
+  const out = await getAvailableEncoders()
+  const candidates: Array<Exclude<HWEncoder, 'libx264'>> = ['h264_nvenc', 'h264_qsv', 'h264_amf']
+
+  for (const enc of candidates) {
+    if (!out.includes(enc)) continue
+    const ok = await probeHardwareEncoder(enc)
+    if (ok) {
+      _cachedEncoder = enc
+      console.log(`[FFmpeg] Selected encoder: ${enc}`)
+      return enc
+    }
+  }
+
+  _cachedEncoder = 'libx264'
+  console.log('[FFmpeg] Selected encoder: libx264')
+  return _cachedEncoder
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -197,9 +229,12 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     outputPath,
     quality,
     encodingMode = 'min_size',
-    showChapterTitles
+    showChapterTitles,
+    language = 'ru'
   } = config
-  const videoProfile = resolveVideoProfile(quality, encodingMode)
+  const lang: Language = language
+  const t = getMainFfmpeg(lang)
+  const videoProfile = resolveVideoProfile(quality, encodingMode, lang)
   const { width, height } = videoProfile
 
   // 1. Get durations for all audio files
@@ -219,7 +254,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     })
   }
 
-  sendProgress(0, 'Анализ аудиофайлов...')
+  sendProgress(0, t.analyzingAudioFiles)
 
   // Detect best available encoder once (result is cached for subsequent calls)
   const encoder = await detectEncoder()
@@ -241,12 +276,12 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     })
     sendProgress(
       Math.round((i + 1) / audioFiles.length * 4),
-      `Анализ: ${audioFiles[i].name}`,
+      t.analyzingFile(audioFiles[i].name),
       { currentChapter: i + 1 }
     )
   }
 
-  const audioPlan: AudioEncodingPlan = planAudioEncoding(audioSources)
+  const audioPlan: AudioEncodingPlan = planAudioEncoding(audioSources, lang)
   const canCopyConcatAudio = canStreamCopyConcat(audioSources)
   const totalSourceAudioBytes = audioSources.reduce((sum, item) => sum + (item.sizeBytes || 0), 0)
   const totalDuration = durations.reduce((a, b) => a + b, 0)
@@ -261,11 +296,11 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
 
   sendProgress(
     5,
-    `Подготовка: ${audioPlan.description} · ${videoProfile.modeLabel} · ожидаемый размер ~${formatBytes(estimatedOutputBytes)}`
+    t.preparation(audioPlan.description, videoProfile.modeLabel, formatBytes(estimatedOutputBytes))
   )
   const audioModeLabel = audioPlan.strategy === 'copy'
-    ? (numAudio > 1 && canCopyConcatAudio ? 'звук без перекодирования (concat)' : 'звук без перекодирования')
-    : `звук AAC ${audioPlan.targetBitrateKbps || 128} кбит/с`
+    ? (numAudio > 1 && canCopyConcatAudio ? t.audioCopyConcat : t.audioCopy)
+    : t.audioAac(audioPlan.targetBitrateKbps || 128)
 
   // 2. Build filter_complex string
   const shouldCopySingleAudio = numAudio === 1 && audioPlan.strategy === 'copy'
@@ -379,13 +414,13 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     updateFinalizationSample(sizeBytes)
 
     const finalizationElapsedSec = (now - finalizationStartedMs) / 1000
-    const details: string[] = [`прошло ${formatWallTime(finalizationElapsedSec)}`]
-    if (sizeBytes > 0) details.push(`размер ${formatBytes(sizeBytes)}`)
-    if (finalizationGrowthBps > 0) details.push(`запись ${formatBytes(finalizationGrowthBps)}/с`)
+    const details: string[] = [`${t.elapsedLabel} ${formatWallTimeLocalized(finalizationElapsedSec, lang)}`]
+    if (sizeBytes > 0) details.push(`${t.sizeLabel} ${formatBytes(sizeBytes)}`)
+    if (finalizationGrowthBps > 0) details.push(`${t.writeLabel} ${formatBytes(finalizationGrowthBps)}${t.perSecond}`)
     details.push(audioModeLabel)
     details.push(videoProfile.modeLabel)
 
-    sendProgress(99, `FFmpeg завершает контейнер MP4: ${details.join(' • ')}`, {
+    sendProgress(99, t.finalizing(details.join(' • ')), {
       currentChapter: numAudio,
       elapsed: totalDuration > 0 ? formatTime(totalDuration) : undefined,
       total: totalDuration > 0 ? formatTime(totalDuration) : undefined,
@@ -421,122 +456,162 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
 
   // 3. Run ffmpeg
   return new Promise((resolve, reject) => {
-    const cmd = Ffmpeg()
-    const audioOutputOptions = shouldCopyAudioDirect
-      ? ['-c:a', 'copy']
-      : ['-c:a', 'aac', '-b:a', `${audioPlan.targetBitrateKbps || 128}k`]
+    let activeEncoder: HWEncoder = encoder
+    let retriedOnCpu = false
+    let concatInputCleaned = false
 
-    // Input 0: cover image — looped at 1 fps.
-    // 1 fps means the entire filter_complex + encoder pipeline processes
-    // ~25× fewer frames than the default 25 fps, directly capping GPU at
-    // the rate it actually needs to work rather than starving it with idle
-    // waits between identical frames.
-    cmd.input(coverImage).inputOptions(['-loop', '1', '-r', '1'])
-
-    // Audio inputs
-    if (concatInput) {
-      cmd.input(concatInput.listPath).inputOptions(['-f', 'concat', '-safe', '0'])
-    } else {
-      for (const file of audioFiles) {
-        cmd.input(file.path)
+    const cleanupConcatInput = (): void => {
+      if (concatInput && !concatInputCleaned) {
+        concatInput.cleanup()
+        concatInputCleaned = true
       }
     }
 
-    cmd
-      .outputOptions([
-        '-filter_complex', filterComplex,
-        '-map', videoMap,
-        '-map', audioMap,
-        ...buildVideoOutputOptions(encoder, videoProfile),
-        ...audioOutputOptions,
-        '-shortest',
-        // Use all available CPU cores for the filter pipeline so it feeds
-        // the GPU encoder as fast as possible.
-        '-threads', '0'
-      ])
-      .output(outputPath)
-      .on('start', (cmdLine: string) => {
-        console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')
-        startWallMs = Date.now()
-        lastElapsedAdvanceMs = startWallMs
-      })
-      .on('progress', (prog: { timemark?: string; percent?: number; targetSize?: number }) => {
-        const elapsedRaw = parseTimemark(prog.timemark)
-        const now = Date.now()
+    const startCommand = (): void => {
+      const cmd = Ffmpeg()
+      const audioOutputOptions = shouldCopyAudioDirect
+        ? ['-c:a', 'copy']
+        : ['-c:a', 'aac', '-b:a', `${audioPlan.targetBitrateKbps || 128}k`]
 
-        if (elapsedRaw > lastElapsedRaw + 0.05) {
-          lastElapsedRaw = elapsedRaw
-          lastElapsedAdvanceMs = now
-          if (finalizationTimer) leaveFinalizationMode()
+      // Input 0: cover image — looped at 1 fps.
+      // 1 fps means the entire filter_complex + encoder pipeline processes
+      // ~25× fewer frames than the default 25 fps, directly capping GPU at
+      // the rate it actually needs to work rather than starving it with idle
+      // waits between identical frames.
+      cmd.input(coverImage).inputOptions(['-loop', '1', '-r', '1'])
+
+      // Audio inputs
+      if (concatInput) {
+        cmd.input(concatInput.listPath).inputOptions(['-f', 'concat', '-safe', '0'])
+      } else {
+        for (const file of audioFiles) {
+          cmd.input(file.path)
         }
+      }
 
-        const nearEnd = totalDuration > 0 && elapsedRaw >= Math.max(0, totalDuration - FINALIZATION_NEAR_END_SEC)
-        const stalledNearEnd = nearEnd && (now - lastElapsedAdvanceMs >= FINALIZATION_STALL_MS)
-        if (stalledNearEnd) {
-          sendFinalizationProgress(prog.targetSize)
-          startFinalizationTicker()
-          return
-        }
-
-        const elapsed = totalDuration > 0 ? Math.min(elapsedRaw, totalDuration) : elapsedRaw
-
-        const percent = totalDuration > 0
-          ? Math.min(99, Math.round(5 + (elapsed / totalDuration) * 94))
-          : Math.min(99, Math.round(prog.percent ?? 0))
-
-        // ETA: extrapolate from real wall-clock speed
-        let eta: string | undefined
-        const wallElapsed = (Date.now() - startWallMs) / 1000
-        const ratio = totalDuration > 0 ? elapsed / totalDuration : 0
-        if (ratio > 0.01 && wallElapsed > 1) {
-          const remaining = Math.max(0, (wallElapsed / ratio) - wallElapsed)
-          if (remaining > 0) eta = formatTime(remaining)
-        }
-
-        // Find current chapter by elapsed time
-        let currentChapter = durations.length > 0 ? 1 : 0
-        let accum = 0
-        for (let i = 0; i < durations.length; i++) {
-          accum += durations[i]
-          if (elapsed < accum) { currentChapter = i + 1; break }
-          if (i === durations.length - 1) currentChapter = durations.length
-        }
-
-        sendProgress(percent, `Глава ${currentChapter} из ${numAudio}`, {
-          currentChapter,
-          elapsed: formatTime(elapsed),
-          total: totalDuration > 0 ? formatTime(totalDuration) : undefined,
-          eta,
-          isFinalizing: false
+      cmd
+        .outputOptions([
+          '-filter_complex', filterComplex,
+          '-map', videoMap,
+          '-map', audioMap,
+          ...buildVideoOutputOptions(activeEncoder, videoProfile),
+          ...audioOutputOptions,
+          '-shortest',
+          // Use all available CPU cores for the filter pipeline so it feeds
+          // the GPU encoder as fast as possible.
+          '-threads', '0'
+        ])
+        .output(outputPath)
+        .on('start', (cmdLine: string) => {
+          console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')
+          startWallMs = Date.now()
+          lastElapsedAdvanceMs = startWallMs
         })
-      })
-      .on('end', () => {
-        leaveFinalizationMode()
-        if (concatInput) concatInput.cleanup()
-        currentCommand = null
-        // Do NOT call sendProgress here — ffmpeg:complete is sent on a different
-        // IPC channel and could be reordered with a late ffmpeg:progress event,
-        // leaving isProcessing stuck as true in the renderer.
-        const totalTime = formatWallTime((Date.now() - startWallMs) / 1000)
-        win.webContents.send('ffmpeg:complete', { outputPath, totalTime })
-        resolve(outputPath)
-      })
-      .on('error', (err: Error) => {
-        leaveFinalizationMode()
-        if (concatInput) concatInput.cleanup()
-        currentCommand = null
-        const msg = err.message || String(err)
-        if (msg.includes('SIGKILL') || msg.includes('SIGTERM') || msg.includes('ffmpeg was killed')) {
-          win.webContents.send('ffmpeg:cancelled')
-        } else {
+        .on('progress', (prog: { timemark?: string; percent?: number; targetSize?: number }) => {
+          const elapsedRaw = parseTimemark(prog.timemark)
+          const now = Date.now()
+
+          if (elapsedRaw > lastElapsedRaw + 0.05) {
+            lastElapsedRaw = elapsedRaw
+            lastElapsedAdvanceMs = now
+            if (finalizationTimer) leaveFinalizationMode()
+          }
+
+          const nearEnd = totalDuration > 0 && elapsedRaw >= Math.max(0, totalDuration - FINALIZATION_NEAR_END_SEC)
+          const stalledNearEnd = nearEnd && (now - lastElapsedAdvanceMs >= FINALIZATION_STALL_MS)
+          if (stalledNearEnd) {
+            sendFinalizationProgress(prog.targetSize)
+            startFinalizationTicker()
+            return
+          }
+
+          const elapsed = totalDuration > 0 ? Math.min(elapsedRaw, totalDuration) : elapsedRaw
+
+          const percent = totalDuration > 0
+            ? Math.min(99, Math.round(5 + (elapsed / totalDuration) * 94))
+            : Math.min(99, Math.round(prog.percent ?? 0))
+
+          // ETA: extrapolate from real wall-clock speed
+          let eta: string | undefined
+          const wallElapsed = (Date.now() - startWallMs) / 1000
+          const ratio = totalDuration > 0 ? elapsed / totalDuration : 0
+          if (ratio > 0.01 && wallElapsed > 1) {
+            const remaining = Math.max(0, (wallElapsed / ratio) - wallElapsed)
+            if (remaining > 0) eta = formatTime(remaining)
+          }
+
+          // Find current chapter by elapsed time
+          let currentChapter = durations.length > 0 ? 1 : 0
+          let accum = 0
+          for (let i = 0; i < durations.length; i++) {
+            accum += durations[i]
+            if (elapsed < accum) { currentChapter = i + 1; break }
+            if (i === durations.length - 1) currentChapter = durations.length
+          }
+
+          sendProgress(percent, t.chapterProgress(currentChapter, numAudio), {
+            currentChapter,
+            elapsed: formatTime(elapsed),
+            total: totalDuration > 0 ? formatTime(totalDuration) : undefined,
+            eta,
+            isFinalizing: false
+          })
+        })
+        .on('end', () => {
+          leaveFinalizationMode()
+          cleanupConcatInput()
+          currentCommand = null
+          // Do NOT call sendProgress here — ffmpeg:complete is sent on a different
+          // IPC channel and could be reordered with a late ffmpeg:progress event,
+          // leaving isProcessing stuck as true in the renderer.
+          const totalTime = formatWallTimeLocalized((Date.now() - startWallMs) / 1000, lang)
+          win.webContents.send('ffmpeg:complete', { outputPath, totalTime })
+          resolve(outputPath)
+        })
+        .on('error', (err: Error) => {
+          leaveFinalizationMode()
+          currentCommand = null
+          const msg = err.message || String(err)
+          if (msg.includes('SIGKILL') || msg.includes('SIGTERM') || msg.includes('ffmpeg was killed')) {
+            cleanupConcatInput()
+            win.webContents.send('ffmpeg:cancelled')
+            return
+          }
+
+          // Hardware encoders can be listed by ffmpeg but still fail at runtime
+          // (missing driver/device or unsupported params). Retry once on CPU.
+          if (!retriedOnCpu && activeEncoder !== 'libx264') {
+            const failedEncoder = activeEncoder
+            retriedOnCpu = true
+            activeEncoder = 'libx264'
+            encoderLabel = ENCODER_LABELS[activeEncoder]
+            encoderId = activeEncoder
+            lastElapsedRaw = 0
+            lastElapsedAdvanceMs = Date.now()
+            resetFinalizationState()
+            sendProgress(
+              5,
+              lang === 'ru'
+                ? `Аппаратный энкодер ${ENCODER_LABELS[failedEncoder]} недоступен, повтор на CPU...`
+                : `Hardware encoder ${ENCODER_LABELS[failedEncoder]} unavailable, retrying on CPU...`,
+              { isFinalizing: false }
+            )
+            console.warn(`[FFmpeg] ${failedEncoder} failed, retrying with libx264: ${msg}`)
+            startCommand()
+            return
+          }
+
+          cleanupConcatInput()
           console.error('[FFmpeg] Error:', msg)
           win.webContents.send('ffmpeg:error', { message: msg })
           reject(err)
-        }
-      })
-      .run()
+        })
+        .run()
 
-    currentCommand = cmd
+      currentCommand = cmd
+    }
+
+    startCommand()
   })
 }
 

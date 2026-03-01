@@ -1,12 +1,14 @@
 import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { AudioFile } from '../../../shared/types'
+import type { AudioFile, Language } from '../../../shared/types'
+import { getRendererTexts } from '../i18n'
 
 interface AudioItemProps {
   file: AudioFile
   index: number
   onRemove: (id: string) => void
+  language: Language
 }
 
 function formatDuration(seconds: number | null | undefined): string {
@@ -18,7 +20,8 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export function AudioItem({ file, index, onRemove }: AudioItemProps): React.ReactElement {
+export function AudioItem({ file, index, onRemove, language }: AudioItemProps): React.ReactElement {
+  const t = getRendererTexts(language)
   const {
     attributes,
     listeners,
@@ -45,7 +48,7 @@ export function AudioItem({ file, index, onRemove }: AudioItemProps): React.Reac
         className="audio-drag-handle"
         {...attributes}
         {...listeners}
-        title="Перетащите для изменения порядка"
+        title={t.audioItem.reorderTitle}
       >
         ⠿
       </span>
@@ -69,7 +72,7 @@ export function AudioItem({ file, index, onRemove }: AudioItemProps): React.Reac
       <button
         className="audio-remove-btn"
         onClick={() => onRemove(file.id)}
-        title="Удалить"
+        title={t.audioItem.removeTitle}
       >
         ×
       </button>

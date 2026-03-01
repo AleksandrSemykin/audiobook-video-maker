@@ -1,11 +1,13 @@
 import React from 'react'
-import type { ProgressData } from '../../../shared/types'
+import type { Language, ProgressData } from '../../../shared/types'
+import { getRendererTexts } from '../i18n'
 
 interface ProgressBarProps {
   progress: ProgressData & { isProcessing?: boolean }
   onCancel: () => void
   onOpenFolder: () => void
   outputPath: string | null
+  language: Language
 }
 
 const ENCODER_ICONS: Record<string, string> = {
@@ -15,7 +17,8 @@ const ENCODER_ICONS: Record<string, string> = {
   'libx264':   '🖥',
 }
 
-export function ProgressBar({ progress }: ProgressBarProps): React.ReactElement {
+export function ProgressBar({ progress, language }: ProgressBarProps): React.ReactElement {
+  const t = getRendererTexts(language)
   const {
     percent = 0,
     stage = '',
@@ -45,7 +48,7 @@ export function ProgressBar({ progress }: ProgressBarProps): React.ReactElement 
         <span className="progress-stage">
           {stage}
           {elapsed && total ? ` · ${elapsed} / ${total}` : ''}
-          {eta ? <span className="progress-eta"> · осталось ~{eta}</span> : null}
+          {eta ? <span className="progress-eta"> · {t.progress.etaPrefix}{eta}</span> : null}
         </span>
         {showEncoder && (
           <span className={`encoder-badge${isGpu ? ' encoder-badge--gpu' : ' encoder-badge--cpu'}`}>

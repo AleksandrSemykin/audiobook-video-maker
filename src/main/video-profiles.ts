@@ -73,7 +73,11 @@ export function resolveVideoProfile(
   }
 }
 
-export function buildVideoOutputOptions(encoder: HWEncoder, profile: VideoProfile): string[] {
+export function buildVideoOutputOptions(
+  encoder: HWEncoder,
+  profile: VideoProfile,
+  useStillImageTune = true
+): string[] {
   const gop = ['-g', '30']
 
   switch (encoder) {
@@ -112,7 +116,7 @@ export function buildVideoOutputOptions(encoder: HWEncoder, profile: VideoProfil
         '-c:v', 'libx264',
         '-preset', profile.cpuPreset,
         '-crf', String(profile.crf),
-        '-tune', 'stillimage',
+        ...(useStillImageTune ? ['-tune', 'stillimage'] : []),
         '-g', profile.mode === 'max_quality' ? '240' : '500'
       ]
   }

@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import type { Language } from '../../../shared/types'
 import { getRendererTexts } from '../i18n'
 
+const COVER_MEDIA_EXT_RE = /\.(jpg|jpeg|png|webp|bmp|gif)$/i
+
 interface CoverPickerProps {
   coverPath: string | null
   onSelect: (path: string) => void
@@ -31,7 +33,7 @@ export function CoverPicker({ coverPath, onSelect, onClear, disabled, language }
     e.preventDefault()
     setDragOver(false)
     const files = Array.from(e.dataTransfer.files)
-    const imgFile = files.find(f => /\.(jpg|jpeg|png|webp|bmp)$/i.test(f.name))
+    const imgFile = files.find(f => COVER_MEDIA_EXT_RE.test(f.name))
     if (imgFile) onSelect(window.electronAPI.getPathForFile(imgFile))
   }
 
@@ -83,6 +85,8 @@ export function CoverPicker({ coverPath, onSelect, onClear, disabled, language }
           </div>
         )}
       </div>
+
+      <div className="cover-formats">{t.coverPicker.supportedFormats}</div>
 
       <div className="cover-panel-footer">
         {coverPath ? (

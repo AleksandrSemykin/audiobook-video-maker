@@ -151,7 +151,7 @@ app.whenReady().then(() => {
     const texts = getMainDialogs(language)
     const result = await dialog.showOpenDialog(win, {
       title: texts.selectCover,
-      filters: [{ name: texts.imageFilterName, extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+      filters: [{ name: texts.imageFilterName, extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] }],
       properties: ['openFile']
     })
     return result.canceled ? null : result.filePaths[0]

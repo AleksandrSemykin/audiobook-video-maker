@@ -30,6 +30,14 @@ test('buildVideoOutputOptions uses libx264 fallback with stillimage tuning', () 
   assert.ok(options.includes('stillimage'))
 })
 
+test('buildVideoOutputOptions disables stillimage tuning for animated input', () => {
+  const profile = resolveVideoProfile('720p', 'min_size')
+  const options = buildVideoOutputOptions('libx264', profile, false)
+
+  assert.ok(options.includes('libx264'))
+  assert.ok(!options.includes('stillimage'))
+})
+
 test('resolveVideoProfile localizes mode label for English', () => {
   const profile = resolveVideoProfile('1080p', 'max_quality', 'en')
   assert.equal(profile.modeLabel, 'mode: max quality')

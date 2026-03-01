@@ -3,7 +3,7 @@ import { createRequire } from 'module'
 import { execFile } from 'child_process'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { extname, join } from 'path'
 import type { FfprobeData } from 'fluent-ffmpeg'
 import type { Language, ProcessConfig } from '../shared/types'
 import {
@@ -236,6 +236,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   const t = getMainFfmpeg(lang)
   const videoProfile = resolveVideoProfile(quality, encodingMode, lang)
   const { width, height } = videoProfile
+  const isAnimatedCover = extname(coverImage).toLowerCase() === '.gif'
 
   // 1. Get durations for all audio files
   // Encoder info is attached to every progress event so the renderer
@@ -473,12 +474,14 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         ? ['-c:a', 'copy']
         : ['-c:a', 'aac', '-b:a', `${audioPlan.targetBitrateKbps || 128}k`]
 
-      // Input 0: cover image — looped at 1 fps.
-      // 1 fps means the entire filter_complex + encoder pipeline processes
-      // ~25× fewer frames than the default 25 fps, directly capping GPU at
-      // the rate it actually needs to work rather than starving it with idle
-      // waits between identical frames.
-      cmd.input(coverImage).inputOptions(['-loop', '1', '-r', '1'])
+      // Input 0: cover media.
+      // Static images are looped at 1 fps to avoid processing identical frames.
+      // GIF covers keep animation and are looped infinitely for full audio length.
+      if (isAnimatedCover) {
+        cmd.input(coverImage).inputOptions(['-stream_loop', '-1'])
+      } else {
+        cmd.input(coverImage).inputOptions(['-loop', '1', '-r', '1'])
+      }
 
       // Audio inputs
       if (concatInput) {
@@ -494,7 +497,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
           '-filter_complex', filterComplex,
           '-map', videoMap,
           '-map', audioMap,
-          ...buildVideoOutputOptions(activeEncoder, videoProfile),
+          ...buildVideoOutputOptions(activeEncoder, videoProfile, !isAnimatedCover),
           ...audioOutputOptions,
           '-shortest',
           // Use all available CPU cores for the filter pipeline so it feeds

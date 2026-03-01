@@ -60,6 +60,7 @@ interface RendererDictionary {
     chooseCoverTitle: string
     replace: string
     emptyText: string
+    supportedFormats: string
     clear: string
     altCover: string
   }
@@ -155,6 +156,7 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       chooseCoverTitle: 'Выбрать обложку',
       replace: 'Заменить',
       emptyText: 'Перетащите обложку\nили нажмите для выбора',
+      supportedFormats: 'Форматы: JPG, JPEG, PNG, WEBP, BMP, GIF',
       clear: 'Очистить',
       altCover: 'Обложка'
     },
@@ -244,6 +246,7 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       chooseCoverTitle: 'Choose cover',
       replace: 'Replace',
       emptyText: 'Drag and drop cover image\nor click to choose',
+      supportedFormats: 'Formats: JPG, JPEG, PNG, WEBP, BMP, GIF',
       clear: 'Clear',
       altCover: 'Cover'
     },

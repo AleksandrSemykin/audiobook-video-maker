@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import twemoji from 'twemoji'
 import { CoverPicker } from './components/CoverPicker'
 import { AudioList } from './components/AudioList'
 import { Settings } from './components/Settings'
@@ -15,6 +16,13 @@ function getFileOrder(name: string): number {
 
 let fileIdCounter = 0
 const LANGUAGE_STORAGE_KEY = 'abvm.language'
+const TWEMOJI_CDN_BASE = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg'
+
+function getLanguageFlagSvg(language: AppSettings['language']): string {
+  const emoji = language === 'ru' ? '\u{1F1F7}\u{1F1FA}' : '\u{1F1FA}\u{1F1F8}'
+  const codepoint = twemoji.convert.toCodePoint(emoji)
+  return `${TWEMOJI_CDN_BASE}/${codepoint}.svg`
+}
 
 function readSavedLanguage(): AppSettings['language'] {
   try {
@@ -256,7 +264,7 @@ export default function App(): React.ReactElement {
   }
 
   const canStart = coverPath && audioFiles.length > 0 && outputPath && !isProcessing
-  const languageFlag = settings.language === 'ru' ? '🇷🇺' : '🇺🇸'
+  const languageFlagSrc = getLanguageFlagSvg(settings.language)
 
   return (
     <div className="app">
@@ -274,7 +282,13 @@ export default function App(): React.ReactElement {
             aria-label={t.app.switchLanguage}
             disabled={isProcessing}
           >
-            <span className="titlebar-lang-icon">{languageFlag}</span>
+            <img
+              className="titlebar-lang-emoji"
+              src={languageFlagSrc}
+              alt=""
+              draggable={false}
+              aria-hidden="true"
+            />
             <span className="titlebar-lang-code">{settings.language.toUpperCase()}</span>
           </button>
           <button className="titlebar-btn" onClick={() => window.electronAPI.minimizeWindow()}>─</button>

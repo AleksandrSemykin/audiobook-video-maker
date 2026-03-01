@@ -119,9 +119,11 @@ html, body, #root {
   gap: 4px;
 }
 
-.titlebar-lang-icon {
-  font-size: 14px;
-  line-height: 1;
+.titlebar-lang-emoji {
+  width: 16px;
+  height: 12px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .titlebar-lang-code {
@@ -168,6 +170,12 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   min-height: 22px;
+}
+
+.cover-formats {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.3;
 }
 
 .panel-label {

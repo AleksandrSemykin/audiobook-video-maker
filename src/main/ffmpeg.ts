@@ -43,6 +43,7 @@ Ffmpeg.setFfprobePath(ffprobePath)
 let currentCommand: ReturnType<typeof Ffmpeg> | null = null
 
 const OUTPUT_FPS = 25
+const STATIC_COVER_OUTPUT_FPS = 10
 
 interface AudioProbeResult {
   duration: number
@@ -304,31 +305,31 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   const audioModeLabel = audioPlan.strategy === 'copy'
     ? (numAudio > 1 && canCopyConcatAudio ? t.audioCopyConcat : t.audioCopy)
     : t.audioAac(audioPlan.targetBitrateKbps || 128)
+  const coverOutputFps = isAnimatedCover ? OUTPUT_FPS : STATIC_COVER_OUTPUT_FPS
 
   // 2. Build filter_complex string
   const shouldCopySingleAudio = numAudio === 1 && audioPlan.strategy === 'copy'
   const shouldCopyConcatAudio = numAudio > 1 && canCopyConcatAudio
   const shouldCopyAudioDirect = shouldCopySingleAudio || shouldCopyConcatAudio
+  const requiresAudioConcat = numAudio > 1 && !shouldCopyAudioDirect
 
-  // Video: scale image to preset with letterboxing
-  const videoScale =
+  // Static covers use a lower but still standard-ish frame rate to balance
+  // RuTube compatibility with encoding speed.
+  let audioMap = '1:a:0'
+  let videoMap = '[vbase]'
+  const filterParts: string[] = [
     `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
     `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
-    `fps=${OUTPUT_FPS},` +
+    `fps=${coverOutputFps},` +
     `format=yuv420p[vbase]`
+  ]
 
-  let audioMap = '[aout]'
-  let videoMap = '[vbase]'
-  const filterParts: string[] = [videoScale]
-
-  if (!shouldCopyAudioDirect) {
+  if (requiresAudioConcat) {
     // Multi-file mode requires decoded concat, then re-encode audio.
     const audioInputRefs = audioFiles.map((_, i) => `[${i + 1}:a]`).join('')
     const audioConcat = `${audioInputRefs}concat=n=${numAudio}:v=0:a=1[aout]`
     filterParts.push(audioConcat)
-  } else {
-    // Compatible source can be stream-copied to avoid size bloat and extra CPU work.
-    audioMap = '1:a:0'
+    audioMap = '[aout]'
   }
 
   if (showChapterTitles && numAudio > 0) {
@@ -367,7 +368,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     videoMap = '[vout]'
   }
 
-  const filterComplex = filterParts.join(';')
+  const filterComplex = filterParts.length > 0 ? filterParts.join(';') : null
   const concatInput = shouldCopyConcatAudio ? prepareConcatInputFile(audioFiles) : null
 
   // Wall-clock timestamp when ffmpeg actually starts encoding (set in on('start'))
@@ -478,8 +479,8 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         : ['-c:a', 'aac', '-b:a', `${audioPlan.targetBitrateKbps || 128}k`]
 
       // Input 0: cover media.
-      // Static images are looped at 1 fps to avoid processing identical frames.
-      // GIF covers keep animation and are looped infinitely for full audio length.
+      // Static images are looped at 1 fps, then raised to a modest CFR in the
+      // filter graph. GIF covers keep animation and are looped infinitely.
       if (isAnimatedCover) {
         cmd.input(coverImage).inputOptions(['-stream_loop', '-1'])
       } else {
@@ -495,19 +496,21 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         }
       }
 
+      const outputOptions = [
+        '-filter_complex', filterComplex,
+        '-map', videoMap,
+        '-map', audioMap,
+        ...buildVideoOutputOptions(activeEncoder, videoProfile, !isAnimatedCover),
+        ...audioOutputOptions,
+        '-movflags', '+faststart',
+        '-shortest',
+        // Use all available CPU cores for the filter pipeline so it feeds
+        // the GPU encoder as fast as possible.
+        '-threads', '0'
+      ]
+
       cmd
-        .outputOptions([
-          '-filter_complex', filterComplex,
-          '-map', videoMap,
-          '-map', audioMap,
-          ...buildVideoOutputOptions(activeEncoder, videoProfile, !isAnimatedCover),
-          ...audioOutputOptions,
-          '-movflags', '+faststart',
-          '-shortest',
-          // Use all available CPU cores for the filter pipeline so it feeds
-          // the GPU encoder as fast as possible.
-          '-threads', '0'
-        ])
+        .outputOptions(outputOptions)
         .output(outputPath)
         .on('start', (cmdLine: string) => {
           console.log('[FFmpeg] Start:', cmdLine.slice(0, 300) + '...')

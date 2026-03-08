@@ -42,6 +42,8 @@ Ffmpeg.setFfprobePath(ffprobePath)
 
 let currentCommand: ReturnType<typeof Ffmpeg> | null = null
 
+const OUTPUT_FPS = 25
+
 interface AudioProbeResult {
   duration: number
   size: number
@@ -312,6 +314,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   const videoScale =
     `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
     `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
+    `fps=${OUTPUT_FPS},` +
     `format=yuv420p[vbase]`
 
   let audioMap = '[aout]'
@@ -499,6 +502,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
           '-map', audioMap,
           ...buildVideoOutputOptions(activeEncoder, videoProfile, !isAnimatedCover),
           ...audioOutputOptions,
+          '-movflags', '+faststart',
           '-shortest',
           // Use all available CPU cores for the filter pipeline so it feeds
           // the GPU encoder as fast as possible.

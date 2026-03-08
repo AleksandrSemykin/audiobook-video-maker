@@ -20,7 +20,10 @@ export interface AudioEncodingPlan {
   description: string
 }
 
-const MP4_COPY_CODECS = new Set(['aac', 'mp3', 'alac', 'ac3', 'eac3'])
+// Keep stream copy only for AAC-in-MP4.
+// Some platforms accept MP3/AC3/EAC3 inside MP4, but stricter upload targets
+// (including RuTube) can reject such files as an unsupported format.
+const MP4_COPY_CODECS = new Set(['aac'])
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))

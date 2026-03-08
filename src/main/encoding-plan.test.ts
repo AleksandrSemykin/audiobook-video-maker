@@ -14,9 +14,18 @@ test('estimateInputBitrateKbps computes bitrate from size+duration', () => {
   assert.ok(kbps > 138 && kbps < 139)
 })
 
-test('planAudioEncoding uses copy for one mp3 source', () => {
+test('planAudioEncoding re-encodes one mp3 source to AAC for broad MP4 compatibility', () => {
   const plan = planAudioEncoding([
     { codec: 'mp3', durationSec: 5006.5, sizeBytes: 86777728, bitRateBps: 138664 }
+  ])
+
+  assert.equal(plan.strategy, 'aac')
+  assert.match(plan.description, /AAC/)
+})
+
+test('planAudioEncoding keeps copy for one AAC source', () => {
+  const plan = planAudioEncoding([
+    { codec: 'aac', durationSec: 5006.5, sizeBytes: 86777728, bitRateBps: 138664 }
   ])
 
   assert.equal(plan.strategy, 'copy')
@@ -44,10 +53,10 @@ test('planAudioEncoding uses AAC for multiple sources', () => {
   assert.ok((plan.targetBitrateKbps || 0) >= 64)
 })
 
-test('planAudioEncoding uses copy for multiple compatible sources', () => {
+test('planAudioEncoding uses copy only for multiple compatible AAC sources', () => {
   const plan = planAudioEncoding([
-    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
-    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
+    { codec: 'aac', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
+    { codec: 'aac', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
   ])
 
   assert.equal(plan.strategy, 'copy')

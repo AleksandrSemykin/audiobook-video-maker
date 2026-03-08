@@ -1,6 +1,6 @@
 {
   "name": "audiobook-video-maker",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Universal audiobook to MP4 video converter",
   "author": "Aleksandr Semykin (Александр Семыкин)",
   "license": "GPL-3.0-or-later",
@@ -45,7 +45,7 @@
   "build": {
     "appId": "com.audiobook.videomaker",
     "productName": "AudioBook Video Maker",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "artifactName": "AudioBook-Video-Maker-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist-app"
     },

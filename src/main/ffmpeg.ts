@@ -232,6 +232,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     outputPath,
     quality,
     encodingMode = 'min_size',
+    uploadTarget = 'universal',
     showChapterTitles,
     language = 'ru'
   } = config
@@ -285,8 +286,9 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
     )
   }
 
-  const audioPlan: AudioEncodingPlan = planAudioEncoding(audioSources, lang)
-  const canCopyConcatAudio = canStreamCopyConcat(audioSources)
+  const isYouTubeFast = uploadTarget === 'youtube_fast'
+  const audioPlan: AudioEncodingPlan = planAudioEncoding(audioSources, lang, uploadTarget)
+  const canCopyConcatAudio = canStreamCopyConcat(audioSources, uploadTarget)
   const totalSourceAudioBytes = audioSources.reduce((sum, item) => sum + (item.sizeBytes || 0), 0)
   const totalDuration = durations.reduce((a, b) => a + b, 0)
   const numAudio = audioFiles.length
@@ -317,11 +319,19 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
   // RuTube compatibility with encoding speed.
   let audioMap = '1:a:0'
   let videoMap = '[vbase]'
+  const videoFilterSteps = [
+    `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`
+  ]
+
+  if (isAnimatedCover || !isYouTubeFast) {
+    videoFilterSteps.push(`fps=${coverOutputFps}`)
+  }
+
+  videoFilterSteps.push('format=yuv420p')
+
   const filterParts: string[] = [
-    `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
-    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,` +
-    `fps=${coverOutputFps},` +
-    `format=yuv420p[vbase]`
+    `[0:v]${videoFilterSteps.join(',')}[vbase]`
   ]
 
   if (requiresAudioConcat) {
@@ -502,7 +512,7 @@ export async function processAudiobook(config: ProcessConfig, win: BrowserWindow
         '-map', audioMap,
         ...buildVideoOutputOptions(activeEncoder, videoProfile, !isAnimatedCover),
         ...audioOutputOptions,
-        '-movflags', '+faststart',
+        ...(isYouTubeFast ? [] : ['-movflags', '+faststart']),
         '-shortest',
         // Use all available CPU cores for the filter pipeline so it feeds
         // the GPU encoder as fast as possible.

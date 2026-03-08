@@ -32,6 +32,15 @@ test('planAudioEncoding keeps copy for one AAC source', () => {
   assert.match(plan.description, /Без перекодирования/)
 })
 
+test('planAudioEncoding keeps old fast MP3 copy mode for youtube_fast target', () => {
+  const plan = planAudioEncoding([
+    { codec: 'mp3', durationSec: 5006.5, sizeBytes: 86777728, bitRateBps: 138664 }
+  ], 'ru', 'youtube_fast')
+
+  assert.equal(plan.strategy, 'copy')
+  assert.match(plan.description, /Без перекодирования/)
+})
+
 test('planAudioEncoding returns English descriptions when language is en', () => {
   const plan = planAudioEncoding([
     { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
@@ -58,6 +67,16 @@ test('planAudioEncoding uses copy only for multiple compatible AAC sources', () 
     { codec: 'aac', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
     { codec: 'aac', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
   ])
+
+  assert.equal(plan.strategy, 'copy')
+  assert.match(plan.description, /concat/)
+})
+
+test('planAudioEncoding allows compatible MP3 concat copy for youtube_fast target', () => {
+  const plan = planAudioEncoding([
+    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 },
+    { codec: 'mp3', durationSec: 1200, sizeBytes: 20 * 1024 * 1024, sampleRateHz: 44100, channels: 2 }
+  ], 'ru', 'youtube_fast')
 
   assert.equal(plan.strategy, 'copy')
   assert.match(plan.description, /concat/)

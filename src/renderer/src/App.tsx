@@ -53,6 +53,7 @@ export default function App(): React.ReactElement {
   const [settings, setSettings] = useState<AppSettings>(() => ({
     quality: '1080p',
     encodingMode: 'min_size',
+    uploadTarget: 'universal',
     transitions: 'none',
     showChapterTitles: false,
     language: readSavedLanguage()
@@ -238,6 +239,7 @@ export default function App(): React.ReactElement {
       outputPath,
       quality: settings.quality,
       encodingMode: settings.encodingMode,
+      uploadTarget: settings.uploadTarget,
       showChapterTitles: settings.showChapterTitles,
       transitions: settings.transitions,
       language: settings.language
@@ -347,9 +349,8 @@ export default function App(): React.ReactElement {
                 <span className="success-banner-time">⏱ {lastTotalTime}</span>
               )}
               <button
-                className="btn btn-secondary"
+                className="btn btn-secondary success-banner-btn"
                 onClick={handleOpenFolder}
-                style={{ padding: '5px 12px', fontSize: 12 }}
               >
                 {t.app.openFolder}
               </button>

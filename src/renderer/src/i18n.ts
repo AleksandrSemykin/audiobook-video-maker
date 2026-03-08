@@ -1,4 +1,4 @@
-import type { EncodingMode, Language, Quality, Transition } from '../../shared/types'
+import type { EncodingMode, Language, Quality, Transition, UploadTarget } from '../../shared/types'
 
 interface RendererDictionary {
   app: {
@@ -30,6 +30,7 @@ interface RendererDictionary {
     qualityLabel: string
     transitionsLabel: string
     modeLabel: string
+    uploadTargetLabel: string
     chapterTitlesLabel: string
     showChapterTitles: string
     hideChapterTitles: string
@@ -40,12 +41,15 @@ interface RendererDictionary {
     outputFolderPlaceholder: string
     chooseFolderTitle: string
     languageLabel: string
+    youtubeFastWarning: string
   }
   options: {
     qualityHints: Record<Quality, string>
     transitions: Record<Transition, string>
     modeLabels: Record<EncodingMode, string>
     modeHints: Record<EncodingMode, string>
+    uploadTargets: Record<UploadTarget, string>
+    uploadTargetHints: Record<UploadTarget, string>
     languages: Record<Language, string>
   }
   audioList: {
@@ -106,6 +110,7 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       qualityLabel: 'Качество видео:',
       transitionsLabel: 'Переходы:',
       modeLabel: 'Режим:',
+      uploadTargetLabel: 'Совместимость:',
       chapterTitlesLabel: 'Названия глав:',
       showChapterTitles: 'Показывать',
       hideChapterTitles: 'Скрыть',
@@ -115,7 +120,8 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       outputFolderTitle: 'Нажмите для выбора папки',
       outputFolderPlaceholder: 'Выберите папку...',
       chooseFolderTitle: 'Выбрать папку',
-      languageLabel: 'Язык:'
+      languageLabel: 'Язык:',
+      youtubeFastWarning: 'Быстрый режим рассчитан на YouTube. Для RuTube загрузка может не сработать.'
     },
     options: {
       qualityHints: {
@@ -134,6 +140,14 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       modeHints: {
         max_quality: 'Лучше картинка, больше размер',
         min_size: 'Меньше файл, быстрее запись'
+      },
+      uploadTargets: {
+        universal: 'RuTube + YouTube',
+        youtube_fast: 'Быстро для YouTube'
+      },
+      uploadTargetHints: {
+        universal: 'Максимальная совместимость с RuTube и YouTube',
+        youtube_fast: 'Старый быстрый режим. Может не загружаться в RuTube'
       },
       languages: {
         ru: 'Русский',
@@ -200,6 +214,7 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       qualityLabel: 'Video quality:',
       transitionsLabel: 'Transitions:',
       modeLabel: 'Mode:',
+      uploadTargetLabel: 'Compatibility:',
       chapterTitlesLabel: 'Chapter titles:',
       showChapterTitles: 'Show',
       hideChapterTitles: 'Hide',
@@ -209,7 +224,8 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       outputFolderTitle: 'Click to choose folder',
       outputFolderPlaceholder: 'Choose folder...',
       chooseFolderTitle: 'Choose folder',
-      languageLabel: 'Language:'
+      languageLabel: 'Language:',
+      youtubeFastWarning: 'Fast mode is intended for YouTube. RuTube upload may fail.'
     },
     options: {
       qualityHints: {
@@ -228,6 +244,14 @@ const UI_TEXTS: Record<Language, RendererDictionary> = {
       modeHints: {
         max_quality: 'Better image, larger size',
         min_size: 'Smaller file, faster write'
+      },
+      uploadTargets: {
+        universal: 'RuTube + YouTube',
+        youtube_fast: 'Fast for YouTube'
+      },
+      uploadTargetHints: {
+        universal: 'Maximum compatibility with RuTube and YouTube',
+        youtube_fast: 'Legacy fast mode. RuTube upload may fail'
       },
       languages: {
         ru: 'Russian',

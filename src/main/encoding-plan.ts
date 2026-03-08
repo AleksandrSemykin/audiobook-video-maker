@@ -1,4 +1,4 @@
-import type { EncodingMode, Language, Quality } from '../shared/types'
+import type { EncodingMode, Language, Quality, UploadTarget } from '../shared/types'
 import { resolveVideoProfile } from './video-profiles'
 import { getEncodingTexts } from './i18n'
 
@@ -20,18 +20,22 @@ export interface AudioEncodingPlan {
   description: string
 }
 
-// Keep stream copy only for AAC-in-MP4.
-// Some platforms accept MP3/AC3/EAC3 inside MP4, but stricter upload targets
-// (including RuTube) can reject such files as an unsupported format.
-const MP4_COPY_CODECS = new Set(['aac'])
+const UNIVERSAL_MP4_COPY_CODECS = new Set(['aac'])
+const YOUTUBE_FAST_MP4_COPY_CODECS = new Set(['aac', 'mp3', 'alac', 'ac3', 'eac3'])
+
+function getMp4CopyCodecs(uploadTarget: UploadTarget = 'universal'): Set<string> {
+  return uploadTarget === 'youtube_fast'
+    ? YOUTUBE_FAST_MP4_COPY_CODECS
+    : UNIVERSAL_MP4_COPY_CODECS
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-export function isMp4CopyCodec(codec?: string): boolean {
+export function isMp4CopyCodec(codec?: string, uploadTarget: UploadTarget = 'universal'): boolean {
   if (!codec) return false
-  return MP4_COPY_CODECS.has(codec.toLowerCase())
+  return getMp4CopyCodecs(uploadTarget).has(codec.toLowerCase())
 }
 
 function normalizeCodec(codec?: string): string {
@@ -42,7 +46,10 @@ function hasValidAudioParam(value?: number): boolean {
   return Number.isFinite(value) && (value || 0) > 0
 }
 
-export function canStreamCopyConcat(sources: AudioSourceProbe[]): boolean {
+export function canStreamCopyConcat(
+  sources: AudioSourceProbe[],
+  uploadTarget: UploadTarget = 'universal'
+): boolean {
   if (sources.length < 2) return false
 
   const first = sources[0]
@@ -50,11 +57,11 @@ export function canStreamCopyConcat(sources: AudioSourceProbe[]): boolean {
   const firstSampleRate = first.sampleRateHz
   const firstChannels = first.channels
 
-  if (!isMp4CopyCodec(firstCodec)) return false
+  if (!isMp4CopyCodec(firstCodec, uploadTarget)) return false
   if (!hasValidAudioParam(firstSampleRate) || !hasValidAudioParam(firstChannels)) return false
 
   return sources.every((source) => {
-    if (!isMp4CopyCodec(source.codec)) return false
+    if (!isMp4CopyCodec(source.codec, uploadTarget)) return false
     if (normalizeCodec(source.codec) !== firstCodec) return false
     if (!hasValidAudioParam(source.sampleRateHz) || !hasValidAudioParam(source.channels)) return false
     return source.sampleRateHz === firstSampleRate && source.channels === firstChannels
@@ -85,13 +92,17 @@ export function selectAacBitrateKbps(inputKbps: number): number {
   return clamp(roundedTo16, 64, 160)
 }
 
-export function planAudioEncoding(sources: AudioSourceProbe[], language: Language = 'ru'): AudioEncodingPlan {
+export function planAudioEncoding(
+  sources: AudioSourceProbe[],
+  language: Language = 'ru',
+  uploadTarget: UploadTarget = 'universal'
+): AudioEncodingPlan {
   const texts = getEncodingTexts(language)
   const inputKbps = estimateInputBitrateKbps(sources)
   const sourceCount = sources.length
   const firstCodec = sources[0]?.codec
 
-  if (sourceCount === 1 && isMp4CopyCodec(firstCodec)) {
+  if (sourceCount === 1 && isMp4CopyCodec(firstCodec, uploadTarget)) {
     const codecLabel = firstCodec ? firstCodec.toUpperCase() : texts.fallbackCodecLabel
     return {
       strategy: 'copy',
@@ -100,7 +111,7 @@ export function planAudioEncoding(sources: AudioSourceProbe[], language: Languag
     }
   }
 
-  if (canStreamCopyConcat(sources)) {
+  if (canStreamCopyConcat(sources, uploadTarget)) {
     const codecLabel = firstCodec ? firstCodec.toUpperCase() : texts.fallbackCodecLabel
     return {
       strategy: 'copy',

@@ -12,11 +12,13 @@ export interface AudioFile {
 export type Quality = '1080p' | '720p' | '480p'
 export type Transition = 'none' | 'fade'
 export type EncodingMode = 'max_quality' | 'min_size'
+export type UploadTarget = 'universal' | 'youtube_fast'
 export type Language = 'ru' | 'en'
 
 export interface AppSettings {
   quality: Quality
   encodingMode: EncodingMode
+  uploadTarget: UploadTarget
   transitions: Transition
   showChapterTitles: boolean
   language: Language
@@ -29,6 +31,7 @@ export interface ProcessConfig {
   outputPath: string
   quality: Quality
   encodingMode: EncodingMode
+  uploadTarget: UploadTarget
   showChapterTitles: boolean
   transitions: Transition
   language: Language

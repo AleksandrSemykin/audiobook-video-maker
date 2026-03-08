@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AppSettings, EncodingMode, Quality, Transition } from '../../../shared/types'
+import type { AppSettings, EncodingMode, Quality, Transition, UploadTarget } from '../../../shared/types'
 import { getRendererTexts } from '../i18n'
 
 interface QualityOption {
@@ -15,6 +15,12 @@ interface TransitionOption {
 
 interface ModeOption {
   value: EncodingMode
+  label: string
+  hint: string
+}
+
+interface UploadTargetOption {
+  value: UploadTarget
   label: string
   hint: string
 }
@@ -60,6 +66,19 @@ export function Settings({
       value: 'min_size',
       label: t.options.modeLabels.min_size,
       hint: t.options.modeHints.min_size
+    }
+  ]
+
+  const uploadTargetOptions: UploadTargetOption[] = [
+    {
+      value: 'universal',
+      label: t.options.uploadTargets.universal,
+      hint: t.options.uploadTargetHints.universal
+    },
+    {
+      value: 'youtube_fast',
+      label: t.options.uploadTargets.youtube_fast,
+      hint: t.options.uploadTargetHints.youtube_fast
     }
   ]
 
@@ -137,12 +156,42 @@ export function Settings({
           </div>
         </div>
 
+        <div className="settings-row settings-full settings-block-row">
+          <span className="settings-label">{t.settings.uploadTargetLabel}</span>
+          <div className="settings-stack">
+            <div className="radio-group">
+              {uploadTargetOptions.map(opt => (
+                <label
+                  key={opt.value}
+                  className={`radio-option${settings.uploadTarget === opt.value ? ' active' : ''}`}
+                  title={opt.hint}
+                >
+                  <input
+                    type="radio"
+                    name="uploadTarget"
+                    value={opt.value}
+                    checked={settings.uploadTarget === opt.value}
+                    onChange={() => set('uploadTarget', opt.value)}
+                    disabled={disabled}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+
+            {settings.uploadTarget === 'youtube_fast' && (
+              <div className="settings-warning" role="note">
+                ⚠️ {t.settings.youtubeFastWarning}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="settings-row">
           <span className="settings-label">{t.settings.chapterTitlesLabel}</span>
           <div
-            className="toggle-wrapper"
+            className={`toggle-wrapper${disabled ? ' is-disabled' : ''}`}
             onClick={() => !disabled && set('showChapterTitles', !settings.showChapterTitles)}
-            style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
           >
             <div className={`toggle${settings.showChapterTitles ? ' on' : ''}`} />
             <span className="toggle-label">
@@ -170,15 +219,14 @@ export function Settings({
           <span className="settings-label">{t.settings.outputFolderLabel}</span>
           <div className="output-path-row">
             <div
-              className="output-path-input"
+              className={`output-path-input${disabled ? ' is-disabled' : ''}`}
               onClick={!disabled ? onSelectFolder : undefined}
               title={outputPath || t.settings.outputFolderTitle}
-              style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
             >
               {outputFolder ? (
                 outputPath
               ) : (
-                <span style={{ color: 'var(--muted)' }}>{t.settings.outputFolderPlaceholder}</span>
+                <span className="output-path-placeholder">{t.settings.outputFolderPlaceholder}</span>
               )}
             </div>
             <button
@@ -186,7 +234,6 @@ export function Settings({
               onClick={onSelectFolder}
               disabled={disabled}
               title={t.settings.chooseFolderTitle}
-              style={{ width: 36, height: 36 }}
             >
               📁
             </button>
